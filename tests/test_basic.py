@@ -1,7 +1,5 @@
-import pytest
+class TestMathUtils:
 
-class TestHello:
+    def test_cubicinterp(self):
 
-    def test_hello(self):
-        
-        print("Hello")
+        pass

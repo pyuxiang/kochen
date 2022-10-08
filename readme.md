@@ -1,6 +1,7 @@
 # Boilerplate library
 
-Creating the initial stuff...
+Pain point: Repetitive coding of the same functionality, which often involves doing the same Google searches.
+Really a list of recipes for consolidation.
 
 Some workflows:
 
