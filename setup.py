@@ -15,7 +15,7 @@ setuptools.setup(
     url="https://pyuxiang.com",
     author="Justin",
     author_email="justin@pyuxiang.com",
-    license="MIT",
+    license="GPLv3",
     packages=setuptools.find_packages(),
     install_requires=requirements,
     extras_require={
