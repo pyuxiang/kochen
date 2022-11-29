@@ -21,5 +21,5 @@ setuptools.setup(
     extras_require={
         "dev": requirements_dev,
     },
-    python_requires=">=3.7",
+    python_requires=">=3.6",
 )
