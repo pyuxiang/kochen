@@ -123,3 +123,38 @@ def manual_derivative(xs, ys):
         derivatives.append((ys[i]-ys[i-1])/(xs[i]-xs[i-1]))
     xs = xs[1:]
     return xs, derivatives
+
+def arange(start, stop, step):
+    """Alternative to np.arange with endpoint as default.
+
+    Uses np.linspace to minimize floating point errors.
+      - Relies on (stop-start) being an integer multiple of step.
+      - Assumes number of decimal places in start/stop < that in step.
+
+    This includes the use of a precision finding step.
+    
+    Examples:
+        >>> arange(0, 100, 0.1) == np.linspace(0, 100, 1001)
+        >>> arange(0, 100, 0.1) != np.arange(0, 100, 0.1)
+        ... #        yields floating-point errors --/^
+    """
+    values = np.linspace(start, stop, round((stop-start)/step)+1)
+    # Clean up of potential floating point errors
+    dp = find_dp(step)
+    return np.array(list(map(lambda v: round(v, dp), values)))
+
+def find_dp(n):
+    """A more robust method of finding decimal place.
+
+    Note:
+        This is a better alternative to 'len(str(float(step)).split(".")[1])'.
+        Only issue is the hardcoded precision size, and the log efficiency.
+    """
+    # TODO (Justin, 2022-11-29):
+    #   Add code to check in opp. direction if precision passes.
+    #   To accomodate for larger numbers.
+    for precision in range(-10, 10):
+        diff = abs(n - round(n, precision))
+        if diff < 1e-12:
+            break
+    return precision
