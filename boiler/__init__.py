@@ -5,6 +5,7 @@ from pathlib import Path as _Path
 _cwd = _Path(__file__).parent.glob("*.py")
 __all__ = [fn.stem for fn in _cwd if fn.stem != "__init__"]
 
+import boiler.devices
 
 """
 Sets whatever is exposed in the `boiler` namespace.
