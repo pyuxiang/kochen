@@ -17,7 +17,7 @@ def pprint(
         width: int = 7,
         out: Optional[str] = None,
         pbar: Optional[Type[tqdm.tqdm]] = None,
-        print: bool = True,
+        stdout: bool = True,
 ):
     """Prints right-aligned columns of fixed width.
 
@@ -50,13 +50,13 @@ def pprint(
         pbar.set_description(line)
 
     # Prints line delimited to console
-    elif print:
-        line = " ".join([f"{value: >{width}s}" for value in array]):
+    elif stdout:
+        line = " ".join([f"{value: >{width}s}" for value in array])
         print(line)
 
     # Write to file if filepath provided
     if out:
-        line = f"{'\t'.join(array)}\n"
+        line = "\t".join(array) + "\n"
         with open(out, "a") as f:
             f.write(line)
 
