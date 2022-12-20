@@ -3,6 +3,8 @@
 """Provides helper functions for data management.
 """
 
+__all__ = ["pprint", "read_log"]
+
 import datetime as dt
 import re
 from typing import Optional, Type
@@ -10,7 +12,8 @@ from typing import Optional, Type
 import numpy as np
 import tqdm
 
-INT_MIN = np.iinfo(np.int64).min
+# For pprint to accept NaN values
+NOVALUE = np.iinfo(np.int64).min
 
 def pprint(
         *values,
@@ -42,7 +45,7 @@ def pprint(
         Conflicts with Python's pprint module, which is implemented
         for pretty-printing of data structures instead of plain tabular data.
     """
-    array = [(str(value) if value != INT_MIN else ' ') for value in values]
+    array = [(str(value) if value != NOVALUE else ' ') for value in values]
 
     # Checks if progress bar is supplied - if so, update that instead
     if pbar:
