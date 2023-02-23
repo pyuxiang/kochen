@@ -65,6 +65,49 @@ def pprint(
 
     return
 
+def pprint_progressbar(value, lower=0, upper=1, width=80):
+    """Prints multi-level progress bar for single valued representation.
+
+    Visual representation of the magnitude of a single number is
+    useful for fast optimization, as opposed to a numeric stream.
+
+    TODO:
+        Clean up code for reuse.
+    """
+    assert upper >= lower
+    value = float(value)
+
+    # Set lower and upper bounds
+    bounds = [
+        (0.5, 2.5),  # \u2588
+        (0.2, 0.5),  # \u2593
+        (0.1, 0.2),  # \u2592
+        (0, 0.1),  # \u2591
+    ]
+    lefts = [0]
+    for bound in bounds:
+        lower, upper = bound
+        percent = (value-lower)/(upper-lower)
+        percent = max(0, min(1, percent))
+        left = int(round(percent*(width-7)))
+        lefts.append(left)
+    lefts.append(width-7)
+
+    # Print blocks
+    blocks = [
+        u"\u2588",
+        u"\u2593",
+        u"\u2592",
+        u"\u2591",
+        " ",
+    ]
+    line = u"{:6.4f}\u2595".format(round(value, 4))
+    for i in range(1, len(lefts)):
+        amt = max(0, min(width-7, lefts[i] - lefts[i-1]))
+        line += blocks[i-1] * amt
+    line += u"\u258f"
+    print(line)
+
 
 def read_log(filename: str, schema: list, merge: bool = False):
     """Parses a logfile into a dictionary of columns.
