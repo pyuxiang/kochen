@@ -38,6 +38,9 @@ def create_parasitic_axes():
     ax2 = ax.twinx()
     plt.sca(ax2)  # easiest to set as current axis to continue 'plt' syntax
     plt.plot(xs, zs, c="tab:green", label="$I_{out}$")
+    ax2.yaxis.label.set_color("tab:green")
+    ax2.tick_params(axis="y", colors="tab:green")
+
     plt.ylabel("Current (A)")
     plt.legend()
 
