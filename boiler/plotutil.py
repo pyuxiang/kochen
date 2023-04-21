@@ -1,5 +1,7 @@
 # Do not import this module unless explicitly specified.
 # Mainly a book of recipes.
+# References:
+#   [1]: https://matplotlib.org/stable/users/explain/event_handling.html#event-connections
 
 def import_mpl_presentation():
     """Prepares matplotlib params for presentations.
@@ -113,3 +115,87 @@ def plot_3d(data, xlabel, ylabel, zlabel, mask, reverse_x=False, reverse_y=False
     plt.tight_layout()
     plt.savefig(re.sub(r"\s", "_", title)+".png")
     return
+
+
+def assign_dynamic_timescale(ax):
+    """Modifies hourly time axis into a dynamic timescale with varying offsets."""
+    import matplotlib.ticker as mticker
+    import numpy as np
+
+    # Cache axis limits to signal redraw event
+    lims = [None, None]
+    fig = ax.get_figure()
+    autoloc = mticker.MaxNLocator(nbins=10, steps=[1, 2, 2.5, 5, 10])
+
+    def rescale(event):
+        # Stop after a redraw event
+        xlims = ax.get_xlim(); ylims = ax.get_ylim()
+        if lims[0] == xlims and lims[1] == ylims:
+            return
+        lims[0] = xlims; lims[1] = ylims
+
+        # Determine required xticklabels and xlabels using xlim
+        spacing = (xlims[1] - xlims[0])*3600/6
+        factor = 1  # scaling factor
+        if spacing > 1200:  # 20 minutes
+            label = "hours"
+            factor = 3600
+        elif spacing > 20:  # 20 seconds -> minutes
+            label = "mins"
+            factor = 60
+        elif spacing > 0.1:  # 100 ms -> seconds
+            label = "s"
+            factor = 1
+        else:  # 100 us -> milliseconds
+            label = "ms"
+            factor = 1e-3
+
+        # Prescale xticks and set location of ticks
+        scaled_xlims = (xlims[0] * 3600/factor, xlims[1] * 3600/factor)
+        xticks = autoloc.tick_values(*scaled_xlims)
+        fixedloc = mticker.FixedLocator(xticks * factor/3600)
+        ax.xaxis.set_major_locator(fixedloc)
+
+        # Trickle down units to calculate time offset
+        remainder = xticks[0]
+        _hours =  _mins =  _secs = 0
+        if label == "ms":
+            _secs = int(remainder // 1000)
+            remainder -= _secs * 1000
+            _mins = int(_secs // 60)
+            _secs -= _mins * 60
+            _hours = int(_mins // 60)
+            _mins -= _hours * 60
+        elif label == "s":
+            _mins = int(remainder // 60)
+            remainder -= _mins * 60
+            _hours = int(_mins // 60)
+            _mins -= _hours * 60
+        elif label == "mins":
+            _hours = int(remainder // 60)
+            remainder -= _hours * 60
+
+        # Construct time offset string
+        xlabel = f"Elapsed time ({label})"
+        timeoffset_str = ""
+        if _hours:  timeoffset_str += f"{_hours}h "
+        if _mins:   timeoffset_str += f"{_mins}m "
+        if _secs:   timeoffset_str += f"{_secs}s "
+        if timeoffset_str:
+            xlabel = f"{xlabel} + {timeoffset_str[:-1]}"
+        ax.set_xlabel(xlabel)
+
+        # Set xlabels and xticklabels
+        xticks -= (xticks[0] - remainder)  # apply offset
+        xticklabels = np.round(xticks, 6)  # clean rounding errors
+        if all([v.is_integer() for v in xticklabels]):
+            xticklabels = np.int32(xticklabels)  # clean integers
+        xticklabels = list(map(str, xticklabels))
+        ax.set_xticklabels(xticklabels)
+
+        # Force a redraw event to draw in new axis labels
+        fig.draw(event.renderer)
+
+    fig.canvas.mpl_connect("draw_event", rescale)
+    return rescale  # hold reference to avoid GC, see [1]
+
