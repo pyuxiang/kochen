@@ -13,9 +13,15 @@
 # https://github.com/microsoft/vscode/issues/146168#issuecomment-1080762526
 
 import colorama
-colorama.just_fix_windows_console()
 
-def s(text, fg=None, bg=None, style=None, up=0):
+try:
+    colorama.just_fix_windows_console()
+    COLORAMA_INIT = False
+except:
+    colorama.init()
+    COLORAMA_INIT = True
+
+def s(text, fg=None, bg=None, style=None, clear=False, up=0):
     """Returns text with ANSI wrappers for each line.
     
     Special note on newlines, where lines are broken up to apply
@@ -40,11 +46,11 @@ def s(text, fg=None, bg=None, style=None, up=0):
         fmt += getattr(colorama.Style, style.upper())
 
     # Force clear lines
-    fmt = colorama.ansi.clear_line() + fmt
+    if clear:
+        fmt = colorama.ansi.clear_line() + fmt
     
     # Break by individual lines to apply formatting
     lines = text.split("\n")
-    num_lines = len(lines)
     lines = [f"{fmt}{line}{colorama.Style.RESET_ALL}" for line in lines]
     text = "\n".join(lines)
 
