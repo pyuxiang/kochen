@@ -19,7 +19,7 @@ import colorama
 try:
     colorama.just_fix_windows_console()
     COLORAMA_INIT = False
-except:
+except AttributeError:
     colorama.init()
     COLORAMA_INIT = True
 
