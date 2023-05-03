@@ -12,6 +12,8 @@
 # VSCode may change the colors to achieve a minimum contrast ratio, see:
 # https://github.com/microsoft/vscode/issues/146168#issuecomment-1080762526
 
+import re
+
 import colorama
 
 try:
@@ -21,7 +23,9 @@ except:
     colorama.init()
     COLORAMA_INIT = True
 
-def s(text, fg=None, bg=None, style=None, clear=False, up=0):
+RE_ANSIESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+
+def style(text, fg=None, bg=None, style=None, clear=False, up=0):
     """Returns text with ANSI wrappers for each line.
     
     Special note on newlines, where lines are broken up to apply
@@ -60,3 +64,10 @@ def s(text, fg=None, bg=None, style=None, clear=False, up=0):
     if up > 0:
         text = colorama.Cursor.UP(up) + text + colorama.Cursor.DOWN(up)
     return text
+
+def strip_ansi(text):
+    return RE_ANSIESCAPE.sub("", text)
+
+def len_ansi(text):
+    """Returns length after removing ANSI codes."""
+    return len(strip_ansi(text))
