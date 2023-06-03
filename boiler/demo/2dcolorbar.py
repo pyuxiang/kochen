@@ -71,7 +71,7 @@ def generate_cgrid(cmap, resolution: int = 1000):
 # Alternatively, use one of matplotlib's cyclic maps
 # cmap = plt.get_cmap("hsv")
 cmap = get_ciecam02_cmap()
-get_color, (xx, yy, zz) = generate_cgrid(cmap, resolution=2000)
+get_color, (xx, yy, zz) = generate_cgrid(cmap, resolution=2048)
 plt.pcolormesh(xx, yy, zz)
 plt.show()
 
@@ -81,3 +81,13 @@ xs = np.arange(len(ys))
 c = get_color(ys, ys)  # vary in both lightness and hue
 plt.scatter(xs, ys, color=c)
 plt.show()
+
+# Demonstration of resolution effect
+rs = np.round(np.geomspace(2, 2048, 11)).astype(np.int32)
+for r in rs:
+    get_color, (xx, yy, zz) = generate_cgrid(cmap, resolution=r)
+    plt.subplots(dpi=300)
+    plt.pcolormesh(xx, yy, zz)
+    plt.title(f"CIECAM02 with resolution {r}")
+    plt.savefig(f"ciecam02_resolution_{r:0>4d}.png")
+    plt.close()
