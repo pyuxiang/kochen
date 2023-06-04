@@ -19,6 +19,7 @@
 #      https://stackoverflow.com/questions/45626482/how-can-i-add-a-2d-colorbar-or-a-color-wheel-to-matplotlib
 
 import sys
+from typing import Callable
 
 import colorspacious
 import numpy as np
@@ -82,6 +83,12 @@ def generate_cgrid(cmap, resolution: int = 256):
         return zz[xc,yc]
     
     return get_color, (xx, yy, zz)
+
+def generate_ciecam02_cgrid(resolution: int = 256) -> Callable:
+    """Convenience function that returns (x,y) to color function."""
+    cmap = get_ciecam02_cmap(resolution=resolution)
+    get_color, _ = generate_cgrid(cmap, resolution=resolution)
+    return get_color
 
 if __name__ == "__main__":
 
