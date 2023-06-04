@@ -136,14 +136,8 @@ def read_log(filename: str, schema: list, merge: bool = False):
         Not released.
     """
 
-    # Custom datatype
-    def convert_time(s):
-        """Converts time in HHMMSS format to datetime object.
-        
-        Note:
-            The default date is 1 Jan 1900.
-        """
-        return dt.datetime.strptime(s, "%H%M%S")
+    convert_time = lambda s: dt.datetime.strptime(s, "%H%M%S")  # default date is 1 Jan 1900
+    convert_datetime = lambda s: dt.datetime.strptime(s, "%Y%m%d_%H%M%S")
 
     # Parse schema
     _maps = []
@@ -152,6 +146,8 @@ def read_log(filename: str, schema: list, merge: bool = False):
         if isinstance(dtype, str):
             if dtype == "time":
                 _map = convert_time
+            elif dtype == "datetime":
+                _map = convert_datetime
             else:
                 raise ValueError(f"Unrecognized schema value - '{dtype}'")
         # Treat everything else as regular Python datatypes
