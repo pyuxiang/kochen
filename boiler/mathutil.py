@@ -1,3 +1,5 @@
+import functools
+
 import numpy as np
 import scipy
 
@@ -158,3 +160,97 @@ def find_dp(n):
         if diff < 1e-12:
             break
     return precision
+
+def gc_product(*args, repeat=1):
+    """Gray-code equivalent of Cartesian product 'itertools.product'.
+
+    Typically use case for when performing multivariate parameter scan for
+    real devices, e.g. voltage/temperature scans, by minimizing number of
+    large parameter jumps. Note that this is a binary-reflected n-bit Gray
+    code.
+
+    Further work needed to implement this as a balanced Gray code instead,
+    to distribute transitions evenly across different devices. See
+    'lrgc_product' for current implementation work.
+
+    Examples:
+
+        >>> from itertools import product
+        >>> xs = "abc"
+        >>> " ".join(["".join(c) for c in product(xs, repeat=2)])  # regular product
+        'aa ab ac ba bb bc ca cb cc'
+        >>> " ".join(["".join(c) for c in gc_product(xs, repeat=2)])
+        'aa ab ac bc bb ba ca cb cc'
+        
+        # Works for arbitrary number of groups
+        >>> xs = [0, 1]
+        >>> " ".join(["".join(map(str, b)) for b in product(xs, repeat=3)])
+        '000 001 010 011 100 101 110 111'
+        >>> " ".join(["".join(map(str, b)) for b in gc_product(xs, repeat=3)])
+        '000 001 011 010 110 111 101 100'
+
+    References:
+        [1]: Original source from SO, https://stackoverflow.com/a/61149719
+    """
+    pools = [tuple(pool) for pool in args] * repeat
+    result = [[]]
+    for pool in pools:
+        result = [x+[y] for i, x in enumerate(result) for y in (
+            reversed(pool) if i % 2 else pool)]
+    for prod in result:
+        yield tuple(prod)
+
+def lrgc_product(*args):
+    """Long-run Gray code variant of Cartesian product.
+
+    WARNING: Not implemented! This is not as trivial as using 2-bit balanced
+    Gray code and substituting individual pools.
+
+    Typically use case for when performing multivariate parameter scan for
+    real devices, e.g. voltage/temperature scans, by minimizing number of
+    large parameter jumps (as with 'gc_product') as well as number of
+    transitions, as a long-run (near-balanced) Gray code.
+
+    2-bit LRGC sequences were precomputed and lifted from [3], up to 8-bits.
+    For more bits, either compute using [2] or cross-reference original
+    paper in [1].
+
+    References:
+        [1]: Original source for brute-force search of near-optimal LRGC,
+             2003 Goddyn, Gvozdjak, "Binary gray codes with long bit runs"
+             link: https://www.combinatorics.org/ojs/index.php/eljc/article/download/v10i1r27/pdf
+        [2]: Implementation of [1], https://stackoverflow.com/a/66555635
+        [3]: LRGC sequences computed using [2], https://gist.github.com/kylemcdonald/8c03de4ae1928ab5f3d203245549e802
+    """
+    raise NotImplementedError("n-bit balanced Gray code not implemented.")
+
+    # WIP...
+    if len(args) > 8:
+        raise NotImplementedError("Gray codes for more than 8 sequences currently not implemented.")
+
+    pools = [tuple(pool) for pool in args]
+    sequence = _get_lrgc_sequence(len(args))
+    pass
+
+
+@functools.cache
+def _get_lrgc_sequence(num_bits):
+    """Cached LRGC sequences, to avoid bloating memory."""
+    assert 1 <= num_bits <= 8 and type(num_bits) == int
+    if num_bits == 1:
+        return (0,)
+    if num_bits == 2:
+        return (0,1,3,2)
+    if num_bits == 3:
+        return (0,1,3,2,6,7,5,4)
+    if num_bits == 4:
+        return (0,1,3,7,15,11,9,8,12,13,5,4,6,14,10,2)
+    if num_bits == 5:
+        return (0,1,3,7,15,31,29,25,17,16,18,2,10,14,12,28,20,21,23,19,27,11,9,13,5,4,6,22,30,26,24,8)
+    if num_bits == 6:
+        return (0,1,3,7,15,31,63,62,58,42,40,32,36,37,5,21,17,25,27,11,10,14,46,38,54,50,48,49,33,41,9,13,29,28,30,26,18,2,34,35,39,55,53,61,57,56,24,8,12,4,6,22,23,19,51,59,43,47,45,44,60,52,20,16)
+    if num_bits == 7:
+        return (0,32,33,35,39,103,111,127,125,93,89,81,80,16,18,2,10,42,46,44,60,124,116,117,119,87,83,91,75,11,9,13,5,37,36,38,54,118,126,122,120,88,72,64,65,1,3,7,15,47,63,61,57,121,113,112,114,82,66,74,78,14,12,28,20,52,53,55,51,115,123,107,105,73,77,69,68,4,6,22,30,62,58,56,40,104,96,97,99,67,71,79,95,31,29,25,17,49,48,50,34,98,106,110,108,76,92,84,85,21,23,19,27,59,43,41,45,109,101,100,102,70,86,94,90,26,24,8)
+    if num_bits == 8:
+        return (0,32,33,97,99,103,71,79,95,223,221,253,249,241,177,176,178,146,130,2,10,14,46,44,60,124,116,84,85,87,215,211,219,251,235,171,169,173,141,133,132,4,6,38,54,62,126,122,120,88,72,200,192,193,225,227,231,167,175,143,159,157,29,25,17,49,48,112,114,98,66,74,78,206,204,236,252,244,180,181,183,151,147,19,27,11,43,41,45,109,101,69,68,70,198,214,222,254,250,186,184,168,136,128,129,1,3,35,39,47,111,127,125,93,89,217,209,208,240,242,226,162,170,138,142,140,12,28,20,52,53,117,119,115,83,91,75,203,201,233,237,229,165,164,166,134,150,22,30,26,58,56,40,104,96,64,65,67,195,199,207,239,255,191,189,185,153,145,144,16,18,50,34,42,106,110,108,76,92,220,212,213,245,247,243,179,187,155,139,137,9,13,5,37,36,100,102,118,86,94,90,218,216,248,232,224,160,161,163,131,135,7,15,31,63,61,57,121,113,81,80,82,210,194,202,234,238,174,172,188,156,148,149,21,23,55,51,59,123,107,105,73,77,205,197,196,228,230,246,182,190,158,154,152,24,8)
+
