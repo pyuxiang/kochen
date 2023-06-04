@@ -233,7 +233,6 @@ def lrgc_product(*args):
     pass
 
 
-@functools.cache
 def _get_lrgc_sequence(num_bits):
     """Cached LRGC sequences, to avoid bloating memory."""
     assert 1 <= num_bits <= 8 and type(num_bits) == int
