@@ -83,31 +83,33 @@ def generate_cgrid(cmap, resolution: int = 256):
     
     return get_color, (xx, yy, zz)
 
-# Alternatively, use one of matplotlib's cyclic maps
-# cmap = plt.get_cmap("hsv")
-cmap = get_ciecam02_cmap()
-get_color, (xx, yy, zz) = generate_cgrid(cmap)
-plt.pcolormesh(xx, yy, zz)
-plt.show()
+if __name__ == "__main__":
 
-# Example usage
-ys = np.linspace(0, 1, 10000)
-xs = np.arange(len(ys))
-c = get_color(ys, ys)  # vary in both lightness and hue
-plt.scatter(xs, ys, color=c)
-plt.show()
-
-# Demonstration of resolution effect
-rs = np.round(np.geomspace(2, 1024, 10)).astype(np.int32)
-for r in rs:
-    cmap = get_ciecam02_cmap(resolution=r)
-    get_color, (xx, yy, zz) = generate_cgrid(cmap, resolution=r)
-    plt.subplots(figsize=(6, 5), dpi=max(128, r//2))
+    # Alternatively, use one of matplotlib's cyclic maps
+    # cmap = plt.get_cmap("hsv")
+    cmap = get_ciecam02_cmap()
+    get_color, (xx, yy, zz) = generate_cgrid(cmap)
     plt.pcolormesh(xx, yy, zz)
-    plt.title(f"CIECAM02 with resolution {r}")
-    plt.xticks(np.linspace(0, 1, 5))
-    plt.yticks(np.linspace(0, 1, 5))
-    plt.savefig(f"ciecam02_resolution_{r:0>4d}.png")
-    plt.close()
-else:
-    sys.exit(0)  # free up system memory if plotting
+    plt.show()
+
+    # Example usage
+    ys = np.linspace(0, 1, 10000)
+    xs = np.arange(len(ys))
+    c = get_color(ys, ys)  # vary in both lightness and hue
+    plt.scatter(xs, ys, color=c)
+    plt.show()
+
+    # Demonstration of resolution effect
+    rs = np.round(np.geomspace(2, 1024, 10)).astype(np.int32)
+    for r in rs:
+        cmap = get_ciecam02_cmap(resolution=r)
+        get_color, (xx, yy, zz) = generate_cgrid(cmap, resolution=r)
+        plt.subplots(figsize=(6, 5), dpi=max(128, r//2))
+        plt.pcolormesh(xx, yy, zz)
+        plt.title(f"CIECAM02 with resolution {r}")
+        plt.xticks(np.linspace(0, 1, 5))
+        plt.yticks(np.linspace(0, 1, 5))
+        plt.savefig(f"ciecam02_resolution_{r:0>4d}.png")
+        plt.close()
+    else:
+        sys.exit(0)  # free up system memory if plotting
