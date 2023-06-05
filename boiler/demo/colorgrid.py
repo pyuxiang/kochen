@@ -80,7 +80,7 @@ def generate_cgrid(cmap, resolution: int = 256):
             raise ValueError("'x' and 'y' must be normalized to within [0,1].")
         xc = np.round(x * (resolution)).astype(np.int32)  # expand to {0, ..., 1000}
         yc = np.round(y * (resolution)).astype(np.int32)
-        return zz[xc,yc]
+        return zz[yc, xc]
     
     return get_color, (xx, yy, zz)
 
