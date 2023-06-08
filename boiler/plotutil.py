@@ -49,6 +49,14 @@ def create_parasitic_axes():
     plt.tight_layout()
     plt.show()
 
+def set_45degree_datetimes():
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    fig, ax = plt.subplots()
+    dformat = mdates.DateFormatter("%-d %b, %-I%P")  # e.g. "7 Jun, 4am"
+    ax.xaxis.set_major_formatter(dformat)
+    plt.xticks(rotation=45, ha="right", rotation_mode="anchor")
+
 def plot_3d(data, xlabel, ylabel, zlabel, mask, reverse_x=False, reverse_y=False, title="", **kwargs):
     """
     
