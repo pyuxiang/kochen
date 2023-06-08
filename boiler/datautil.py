@@ -117,6 +117,11 @@ def read_log(filename: str, schema: list, merge: bool = False):
     extracted from the filename) since these are not rigorously
     set-in-stone yet.
 
+    If "time" is used, rows are assumed to be in chronological order,
+    i.e. monotonically increasing, so timing overflows will be
+    assumed to mean the next day. 'None' is also a valid datatype,
+    i.e. ignored.
+
     Args:
         filename: Filename of log file.
         schema: List of datatypes to parse each column in logfile.
@@ -136,7 +141,18 @@ def read_log(filename: str, schema: list, merge: bool = False):
         Not released.
     """
 
+    convert_time_day_overflow = 0  # allow time conversions to cycle into the next day
+    convert_time_prevtime = dt.datetime(1900, 1, 1, 0, 0, 0)
     convert_time = lambda s: dt.datetime.strptime(s, "%H%M%S")  # default date is 1 Jan 1900
+    def convert_time(s):
+        nonlocal convert_time_prevtime
+        nonlocal convert_time_day_overflow
+        result = dt.datetime.strptime(s, "%H%M%S")  # default date is 1 Jan 1900
+        if result < convert_time_prevtime:
+            convert_time_day_overflow += 1
+        convert_time_prevtime = result
+        result += dt.timedelta(days=convert_time_day_overflow)
+        return result
     convert_datetime = lambda s: dt.datetime.strptime(s, "%Y%m%d_%H%M%S")
 
     # Parse schema
@@ -150,6 +166,8 @@ def read_log(filename: str, schema: list, merge: bool = False):
                 _map = convert_datetime
             else:
                 raise ValueError(f"Unrecognized schema value - '{dtype}'")
+        elif dtype is None:  # ignore column
+            _map = None
         # Treat everything else as regular Python datatypes
         elif isinstance(dtype, type):
             _map = dtype
@@ -161,18 +179,20 @@ def read_log(filename: str, schema: list, merge: bool = False):
     is_header_logged = False
     _headers = []
     _data = []
+    print(_maps)
     with open(filename, "r") as f:
         for row_str in f:
             # Squash all intermediate spaces
             row = re.sub(r"\s+", " ", row_str.strip()).split(" ")
             try:
                 # Equivalent to Pandas's 'applymap'
-                row = [f(v) for f, v in zip(_maps, row)]
+                # Note this cannot be run in parallel due to 'convert_time' implementation
+                row = [f(v) for f, v in zip(_maps, row) if f is not None]
                 _data.append(row)
             except:
                 # If fails, assume is string header
                 if not is_header_logged:
-                    _headers = row
+                    _headers = [v for f, v in zip(_maps, row) if f is not None]
                     is_header_logged = True
 
     if not is_header_logged:
