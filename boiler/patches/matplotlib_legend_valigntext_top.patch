@@ -1,0 +1,11 @@
+--- legend.py	2023-08-12 10:49:14.759521165 +0800
++++ legend.valigntop.py	2023-08-12 10:49:08.243468968 +0800
+@@ -886,7 +886,7 @@
+             itemboxes = [HPacker(pad=0,
+                                  sep=self.handletextpad * fontsize,
+                                  children=[h, t] if markerfirst else [t, h],
+-                                 align="baseline")
++                                 align="top")
+                          for h, t in handles_and_labels_column]
+             # pack columnbox
+             alignment = "baseline" if markerfirst else "right"

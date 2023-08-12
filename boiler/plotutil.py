@@ -57,8 +57,21 @@ def set_45degree_datetimes():
     ax.xaxis.set_major_formatter(dformat)
     plt.xticks(rotation=45, ha="right", rotation_mode="anchor")
 
-def plot_3d(data, xlabel, ylabel, zlabel, mask, reverse_x=False, reverse_y=False, title="", **kwargs):
+def plot_3d(data, xlabel, ylabel, zlabel, mask=None, reverse_x=False, reverse_y=False, title="", **kwargs):
+    import re
+    import matplotlib.pyplot as plt
+    import numpy as np
     """
+
+    Examples:
+        
+        # Input methods
+        >>> plot_3d([xs, ys, zs], ...)
+        >>> plot_3d([(x0, y0, z0), ...], ...)
+        >>> plot_3d({"{{xlabel}}": xs, ...}, ...)
+
+        # Passing plotting parameters
+        >>> plot_3d(..., _xlabel="Quantity", _xscale="log")
     
     TODO:
         Abstract away the internals to return the xrow, yrow and zrow
@@ -66,12 +79,27 @@ def plot_3d(data, xlabel, ylabel, zlabel, mask, reverse_x=False, reverse_y=False
         in the function signature.
     """
 
-    # Enable value bypass for kwargs using '_' prepended
+    # Allow data to be flat arrays as well
+    if not isinstance(data, dict):
+        try:
+            data = np.array(data)
+            if data.shape[-1] == 3:
+                data = data.T
+            labels = [xlabel, ylabel, zlabel, *[f"p{i}" for i in range(data.shape[0])]]
+            data = dict(zip(labels, data))
+        except:
+            raise ValueError("Unsupported data format.")
+
+    # Enable value bypass for kwargs using '_' prepended, to avoid conflict with existing kwargs
     kwargs = dict([(k.lstrip("_"),v) for k,v in kwargs.items()])
     # TODO(Justin): Add multiple filters
-    xs = data[xlabel][mask]
-    ys = data[ylabel][mask]
-    zs = data[zlabel][mask]
+    xs = np.array(data[xlabel])
+    ys = np.array(data[ylabel])
+    zs = np.array(data[zlabel])
+    if mask is not None:
+        xs = xs[mask]
+        ys = ys[mask]
+        zs = zs[mask]
 
     # Extract axes and convert to map for efficiency
     # xs_unique = sorted(set(xs))  # masked
@@ -95,7 +123,7 @@ def plot_3d(data, xlabel, ylabel, zlabel, mask, reverse_x=False, reverse_y=False
     
     # TODO(Justin): See if can do something with this too...
     z_argmax = np.argmax(zs)
-    data_argmax = dict([(k,v[mask][z_argmax]) for k,v in data.items()])
+    data_argmax = dict([(k,np.array(v)[mask][z_argmax]) for k,v in data.items()])
     x_max = data_argmax[xlabel]
     y_max = data_argmax[ylabel]
     z_max = data_argmax[zlabel]
@@ -108,7 +136,8 @@ def plot_3d(data, xlabel, ylabel, zlabel, mask, reverse_x=False, reverse_y=False
 
     fig, ax = plt.subplots(1, 1, figsize=(8,6))
     plt.suptitle(_title)
-    plt.pcolormesh(xs_unique, ys_unique, zs_grid, cmap=plt.cm.jet, shading="nearest", vmin=0)
+    #plt.pcolormesh(xs_unique, ys_unique, zs_grid, cmap=plt.cm.jet, shading="nearest", vmin=0)
+    plt.pcolormesh(xs_unique, ys_unique, zs_grid, cmap=plt.cm.jet, shading="nearest")
     # Apply hatch pattern to missing values: https://stackoverflow.com/a/35905483
     ax.patch.set(hatch="x", edgecolor="black")
     plt.xlabel(xlabel)
