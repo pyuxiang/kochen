@@ -10,7 +10,7 @@ requirements_dev = [
 
 setuptools.setup(
     name="boiler",
-    version="0.0.7",
+    version="0.0.8",
     description="A compilation of boilerplate code",
     url="https://pyuxiang.com",
     author="Justin",
