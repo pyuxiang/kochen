@@ -3,7 +3,7 @@ import sys
 
 class SuppressPrint:
     """Suppress print messages, i.e. stdout.
-    
+
     Useful for debugging / profiling / suppressing stdout from functions
     beyond your control. Works by creating a context within which outputs
     to stdout are redirected to /dev/null.
@@ -21,16 +21,16 @@ class SuppressPrint:
         self.restore, sys.stdout = sys.stdout, None
     def __exit__(self, *args):
         sys.stdout = self.restore
-    
+
 def import_pyfile(filepath):
     """Dynamic import of Python files.
-    
+
     Useful for automating testing of standardized python scripts, e.g.
     student submissions in a Python course. A strong warning for such
     a use-case: vet through untrusted scripts before actually running them.
     """
     if not filepath.is_file():
-        raise FileNotFoundError(f'{filepath} does not exist.')        
+        raise FileNotFoundError(f'{filepath} does not exist.')
     sys.path.insert(0, filepath.parent)
     with SuppressPrint():
         try:
@@ -40,3 +40,4 @@ def import_pyfile(filepath):
     # To import specific module functionality, use the getattr function
     # and check for AttributeError
     return module
+

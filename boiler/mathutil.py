@@ -1,4 +1,5 @@
 import functools
+import inspect
 
 import numpy as np
 import scipy
@@ -8,7 +9,7 @@ import uncertainties
 # Linear interpolation
 def lininterp(new_xs, old_xs, old_ys):
     """Performs a linear interpolation.
-    
+
     Examples:
         >>> xs = np.linspace(0, 2*np.pi, 11)
         >>> ys = np.sin(xs)
@@ -33,13 +34,13 @@ def cubicinterp(new_xs, old_xs, old_ys):
 
 def smooth(xs: np.ndarray, window: int = 1):
     """Simple smoothening by averaging fixed number of data points.
-    
+
     Contexts:
         Useful in cases where data is noisy, and there are many data points
         from high resolution sampling. Originally from QT5201S HW2 when
         cleaning up datapoints imported from nanosecond-resolution oscilloscope
         over a range spanning tens of microseconds.
-    
+
     Examples:
         Clean up noisy/excessive data:
 
@@ -59,7 +60,7 @@ def bin(xx, yy: np.ndarray, start: float, end: float, n: int):
     Contexts:
         Useful when x-data is not monotonically increasing, such as in a loop.
         Binning can be performed to subsequently do partial derivatives over x-axis.
-    
+
     Examples:
         >>> xs, ys = bin(voltages, charges, -10, 10, 51)  # 51 points between -10V to 10V
     """
@@ -75,21 +76,21 @@ def bin(xx, yy: np.ndarray, start: float, end: float, n: int):
 
 def pairfilter(pred, *xs):
     """Perform group-based filtering based on filtering predicate.
-    
+
     Args:
         pred: Predicate for filtering, must have same number of arguments
               as number of datarows supplied.
         xs: Variable number of datarows for filtering.
-    
+
     Contexts:
         Originally from QT5201S homework 2, when calculations of instantaneous
         gradient yielded spurious results near endpoints. Similarly used to
         isolate features near zero-point, to calculate a mean value.
-    
+
     Note:
         This can probably be more efficiently implemented using numpy
         row-operation conventions.
-    
+
     Examples:
         >>> x1 = np.linspace(0, 1, 101)
         >>> x2 = np.linspace(1, 2, 100)
@@ -101,7 +102,7 @@ def pairfilter(pred, *xs):
 
 def manual_integration(ts, xs):
     """
-    
+
     Context:
         Riemann summation for discrete integration. Dynamic programming.
     """
@@ -114,7 +115,7 @@ def manual_integration(ts, xs):
 
 def manual_derivative(xs, ys):
     """
-    
+
     Context:
         Instantaneous derivative.
 
@@ -136,7 +137,7 @@ def arange(start, stop, step):
       - Assumes number of decimal places in start/stop < that in step.
 
     This includes the use of a precision finding step.
-    
+
     Examples:
         >>> arange(0, 100, 0.1) == np.linspace(0, 100, 1001)
         >>> arange(0, 100, 0.1) != np.arange(0, 100, 0.1)
@@ -183,7 +184,7 @@ def gc_product(*args, repeat=1):
         'aa ab ac ba bb bc ca cb cc'
         >>> " ".join(["".join(c) for c in gc_product(xs, repeat=2)])
         'aa ab ac bc bb ba ca cb cc'
-        
+
         # Works for arbitrary number of groups
         >>> xs = [0, 1]
         >>> " ".join(["".join(map(str, b)) for b in product(xs, repeat=3)])
@@ -258,17 +259,96 @@ def _get_lrgc_sequence(num_bits):
 def gaussian(x, A, μ, σ):
     """Evaluates the Gaussian function."""
     return A * np.exp(-(x-μ)**2/(2.*σ**2))
+    
+def gaussian_bg(x, A, μ, σ, bg):
+    """Evaluates the Gaussian function with non-zero background."""
+    return A * np.exp(-(x-μ)**2/(2.*σ**2)) + bg
 
 def gaussian_pdf(x, μ, σ):
     """Evaluates the Gaussian PDF."""
     A = 1/(σ * np.sqrt(2 * np.pi))
     return gaussian(x, A, μ, σ)
 
-def fit(f, xs, ys, *args, **kwargs):
+def fit(f, xs, ys, errors: bool = False, labels: bool = False, *args, **kwargs):
     popt, pcov = scipy.optimize.curve_fit(f, xs, ys, *args, **kwargs)
-    perr = np.sqrt(np.diag(pcov))
-    argnames = list(inspect.signature(f).parameters.keys())
-    pvals = [uncertainties.ufloat(*p) for p in zip(popt, perr)]
-    plabels = [f"{a} = {pval}" for a, pval in zip(argnames, pvals)]
-    return pvals, plabels
+    if not errors and not labels:
+        return popt  # defaults to standard
 
+    perr = np.sqrt(np.diag(pcov))
+    pvals = [uncertainties.ufloat(*p) for p in zip(popt, perr)]
+    argnames = list(inspect.signature(f).parameters.keys())[1:]
+    pretty_pvals = [str(pval).split("+/-") for pval in pvals]
+    plabels = [f"{a} = {v} ± {u}" for a, (v,u) in zip(argnames, pretty_pvals)]  # {:P} for pretty-print alternative
+
+    ret = pvals if errors else popt
+    if labels:
+        return ret, plabels
+    return ret
+
+def histogram(a, bins=10, range=None, symmetric: bool = False, endpoint: bool = False, **kwargs):
+    """Convenience for slight adjustments to 'np.histogram'.
+
+    Mitigates a couple of small bugs, e.g. `np.histogram([0,1,2], bins=2, range=(0,2))`
+    returns `[1,2]` instead of the expected `[1,1]` with the last bound being exclusive.
+
+    Args:
+        a: As per 'numpy.histogram'.
+        bins: As per 'numpy.histogram'.
+        range: As per 'numpy.histogram'.
+        symmetric: Whether bin labels should be aligned to center of bin.
+        endpoint: Whether right-bound of range should be a bin.
+
+    Examples:
+        >>> a = [0, 1, 2, 1, 3]; range = (0, 3)
+        >>> p = lambda x, y: print(list(zip(x.astype(np.int64), y)))
+
+        # Buggy np.histogram
+        >>> ys, xs = np.histogram(a, bins=3, range=range)
+        >>> p(xs, ys)  # note 'xs' also has an extra value
+        [(0, 1), (1, 2), (2, 2)]
+
+        # Expected behaviour
+        >>> ys, xs = histogram(a, bins=3, range=range)
+        >>> p(xs, ys)
+        [(0, 1), (1, 2), (2, 1)]
+
+        # ... with extra endpoint
+        >>> ys, xs = histogram(a, bins=4, range=range, endpoint=True)
+        >>> p(xs, ys)
+        [(0, 1), (1, 2), (2, 1), (3, 1)]
+
+        # ... with symmetrical behaviour
+        >>> ys, xs = histogram(a, bins=5, range=(-2,2), symmetric=True, endpoint=True)
+        >>> p(xs, ys)
+        [(-2, 0), (-1, 0), (0, 1), (1, 2), (2, 1)]
+
+        # ... without endpoint
+        >>> ys, xs = histogram(a, bins=4, range=(-2,2), symmetric=True)
+        >>> p(xs, ys)
+        [(-2, 0), (-1, 0), (0, 1), (1, 2)]
+    """
+    # Align with 'np.histogram' behaviour
+    if range is None:
+        range = (np.min(a), np.max(a))
+
+    # Calculate bin width and amount to extend right bound
+    if endpoint:
+        width = (range[1] - range[0]) / (bins - 1)
+        extend = 2 * width
+    else:
+        width = (range[1] - range[0]) / bins
+        extend = width
+
+    # Left-bias bins by half-width for symmetric bins
+    left, right = range
+    if symmetric:
+        left -= width / 2
+        right -= width / 2
+
+    # Extend range to avoid right-exclusive error
+    ys, xs = np.histogram(a, bins=bins+1, range=(left,right+extend), **kwargs)
+
+    # Return results
+    if not symmetric:
+        return ys[:-1], xs[:-2]
+    return ys[:-1], (xs[1:-1] + xs[:-2]) / 2

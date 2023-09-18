@@ -64,7 +64,7 @@ def plot_3d(data, xlabel, ylabel, zlabel, mask=None, reverse_x=False, reverse_y=
     """
 
     Examples:
-        
+
         # Input methods
         >>> plot_3d([xs, ys, zs], ...)
         >>> plot_3d([(x0, y0, z0), ...], ...)
@@ -72,7 +72,7 @@ def plot_3d(data, xlabel, ylabel, zlabel, mask=None, reverse_x=False, reverse_y=
 
         # Passing plotting parameters
         >>> plot_3d(..., _xlabel="Quantity", _xscale="log")
-    
+
     TODO:
         Abstract away the internals to return the xrow, yrow and zrow
         data directly to avoid excessive customization of pcolormesh
@@ -115,19 +115,19 @@ def plot_3d(data, xlabel, ylabel, zlabel, mask=None, reverse_x=False, reverse_y=
     for x, y, z in zip(xs, ys, zs):
         xidx = xs_mapper.get(x, None)
         yidx = ys_mapper.get(y, None)
-        
+
         # TODO: Remove this check - all x and y values should exist
         if xidx is None or yidx is None:
             continue
         zs_grid[yidx][xidx] = z
-    
+
     # TODO(Justin): See if can do something with this too...
     z_argmax = np.argmax(zs)
     data_argmax = dict([(k,np.array(v)[mask][z_argmax]) for k,v in data.items()])
     x_max = data_argmax[xlabel]
     y_max = data_argmax[ylabel]
     z_max = data_argmax[zlabel]
-    
+
     # Plot stuff
     _title = str(data_argmax)
     #_title = f"HVOLT {round(max_hvolt,1)}V, TVOLT {round(max_threshvolt)}mV, Pairs {pair}cps, Raw singles {singles}cps"
@@ -235,4 +235,26 @@ def assign_dynamic_timescale(ax):
 
     fig.canvas.mpl_connect("draw_event", rescale)
     return rescale  # hold reference to avoid GC, see [1]
+
+def generate_fit_label(label, plabels):
+    """Provides a consistent legend for fitted parameters.
+
+    Args:
+        label: Label for plot.
+        plabels: Output from 'mathutil.fit'.
+
+    Examples:
+        >>> from boiler.mathutil import fit
+        >>> popt, plabels = fit(f, xs, ys, labels=True)
+        >>> # plabels = ['A = 3.77+/-0.05', 'μ = 7.14+/-0.04', 'σ = 0.880+/-0.030']
+        >>> label = generate_fit_label("Signal curve", plabels)
+        >>> print(label)
+        Signal curve
+           |  A = 3.76+/-0.05
+           |  μ = 7.14+/-0.04
+           |  σ = 0.881+/-0.030
+        >>> plt.plot(xs, ys, label=label)
+    """
+    return f"{label}\n" + "\n".join([f"   |  {p}" for p in plabels])
+
 
