@@ -69,6 +69,37 @@ handler.setFormatter(
     )
 )
 logger.addHandler(handler)
+
+
+def main(args):
+    pass
+
+
+if __name__ == "__main__":
+    filename = pathlib.Path(__file__).name
+    parser = configargparse.ArgumentParser(
+        default_config_files=[f"{filename}.default.conf"],
+        description="",
+    )
+
+    # Boilerplate
+    parser.add_argument(
+        "--config", is_config_file_arg=True,
+        help="Path to configuration file")
+    parser.add_argument(
+        "--save", is_write_out_config_file_arg=True,
+        help="Save configuration as file, and immediately exits")
+    parser.add_argument(
+        "--verbose", "-v", action="count", default=0,
+        help="Specify debug verbosity, e.g. -vv for more verbosity")
+    parser.add_argument(
+        "--quiet", action="store_true",
+        help="Suppress errors, but will not block logging")
+
+    # Arguments
+    if len(sys.argv) > 1:
+        args = parser.parse_args()
+        main(args)
 '''
 
     texts = [text1, text2]
