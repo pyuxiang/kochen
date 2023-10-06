@@ -57,6 +57,8 @@ def smooth(xs: np.ndarray, window: int = 1):
 def bin(xx, yy: np.ndarray, start: float, end: float, n: int):
     """Perform smoothening by averaging over x-valued bins.
 
+    Deprecated - this existed in an era where I didn't know numpy.
+
     Contexts:
         Useful when x-data is not monotonically increasing, such as in a loop.
         Binning can be performed to subsequently do partial derivatives over x-axis.
@@ -73,6 +75,43 @@ def bin(xx, yy: np.ndarray, start: float, end: float, n: int):
     xs += (xs[1]-xs[0])/2  # put in center of bin
     # print(xs, ys)
     return list(xs)[:-1], ys
+
+def bin(xs, *yss, range=(0,1), bins=10, mode="lin"):
+    """Perform smoothening by averaging over x-valued bins.
+
+    Multi-argument 'yss' is specifically used so that binning can be done for
+    inhomogenous data types as well. Mode should be one of 'lin' or
+    'exp'.
+
+    Arguments:
+        xs: Data for binning, should be of numeric type.
+        yss: Data for binning.
+        mode: Determines whether bin widths are linear or geometric.
+
+    Examples:
+        >>> xs = np.arange(7)
+        >>> ys = [ np.linspace(0, 6, 7), np.linspace(0, 60, 7) ]
+        >>> rs = bin(xs, *ys, range=(0,6), bins=3)
+        >>> np.all(np.array(rs) == [[0.5,2.5,4.5,6],[0.5,2.5,4.5,6],[5,25,45,60]])
+        True
+    """
+
+    # Calculate desired bins, noting the right constraint for binning extremes
+    start, end = range
+    if mode == "lin":
+        bs = np.linspace(start, end, bins+1)
+    elif mode == "exp":
+        bs = np.geomspace(start, end, bins+1)
+    else:
+        raise ValueError("'mode' should be one of {'lin', 'exp'}")
+
+    idxs = np.digitize(xs, bs) - 1
+    inputs = [xs, *yss]
+    results = [np.bincount(idxs, weights=input, minlength=bins+1) for input in inputs]
+    sizes = [np.bincount(idxs, minlength=bins+1) for input in inputs]
+    results = [result/size for result, size in zip(results, sizes)]
+    return results
+
 
 def pairfilter(pred, *xs):
     """Perform group-based filtering based on filtering predicate.
@@ -259,7 +298,7 @@ def _get_lrgc_sequence(num_bits):
 def gaussian(x, A, μ, σ):
     """Evaluates the Gaussian function."""
     return A * np.exp(-(x-μ)**2/(2.*σ**2))
-    
+
 def gaussian_bg(x, A, μ, σ, bg):
     """Evaluates the Gaussian function with non-zero background."""
     return A * np.exp(-(x-μ)**2/(2.*σ**2)) + bg
