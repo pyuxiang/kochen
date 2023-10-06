@@ -112,6 +112,35 @@ def bin(xs, *yss, range=(0,1), bins=10, mode="lin"):
     results = [result/size for result, size in zip(results, sizes)]
     return results
 
+def subsample(xs, *yss, range=(0,1), separation=1, mode="min"):
+    """Perform subsampling.
+
+    Examples:
+        >>> xs = np.arange(7)
+        >>> ys = [ np.linspace(0, 6, 7), np.linspace(0, 60, 7) ]
+        >>> rs = subsample(xs, *ys, range=(0,6), separation=2)
+        >>> np.all(np.array(rs) == [[0,2,4,6],[0,2,4,6],[0,20,40,60]])
+        True
+    """
+    if mode == "min":
+        # Construct choice by minimum
+        idxs = np.zeros(len(xs)).astype(bool)
+        prev_idx = 0; idxs[0] = True
+        for curr_idx, x in enumerate(xs):
+            if (x - xs[prev_idx]) < separation:
+                continue
+            idxs[curr_idx] = True
+            prev_idx = curr_idx
+    elif mode == "step":
+        # Construct equal step spacing
+        # Choose points higher than or equal to current step
+        pass
+    else:
+        raise ValueError("'mode' should be one of {'min', 'step'}")
+
+    return [np.array(xs)[idxs], *[np.array(ys)[idxs] for ys in yss]]
+
+
 
 def pairfilter(pred, *xs):
     """Perform group-based filtering based on filtering predicate.
