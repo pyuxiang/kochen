@@ -20,10 +20,11 @@ if __name__ == "__main__":
         print("Please supply desired filename for new Python template script.")
         sys.exit(1)
     filename = sys.argv[1]
-    if not filename.endswith(".py"):
-        filename += ".py"
-    if pathlib.Path(filename).exists():
-        print(f"File '{filename}' already exists, avoiding overwriting.")
+    filepath = pathlib.Path(filename)
+    if filepath.suffix != ".py":
+        filepath = filepath.with_suffix(filepath.suffix + ".py")
+    if filepath.exists():
+        print(f"File '{filepath}' already exists, avoiding overwriting.")
         sys.exit(1)
 
     text1 = f'''
@@ -48,12 +49,15 @@ import tqdm
 import warnings
 from itertools import product
 
+import configargparse
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import scipy
 
-import boiler
-from fpfind.lib import parse_timestamps as parser
+# Personal maintained libraries
+# import boiler
+# from fpfind.lib import parse_timestamps as tparser
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
@@ -74,6 +78,9 @@ logger.addHandler(handler)
 def main(args):
     pass
 
+def check_args(args):
+    pass
+
 
 if __name__ == "__main__":
     filename = pathlib.Path(__file__).name
@@ -88,7 +95,7 @@ if __name__ == "__main__":
         help="Path to configuration file")
     parser.add_argument(
         "--save", is_write_out_config_file_arg=True,
-        help="Save configuration as file, and immediately exits")
+        help="Path to configuration file for saving, then immediately exit")
     parser.add_argument(
         "--verbose", "-v", action="count", default=0,
         help="Specify debug verbosity, e.g. -vv for more verbosity")
@@ -99,12 +106,17 @@ if __name__ == "__main__":
     # Arguments
     if len(sys.argv) > 1:
         args = parser.parse_args()
+        check_args(args)
         main(args)
 '''
 
     texts = [text1, text2]
     filecontents = "\n\n".join([t.strip("\n") for t in texts])
-    with open(filename, "w") as f:
+    with open(filepath, "w") as f:
         f.write(filecontents)
-    print(f"File '{filename}' successfully written.")
+    print(f"File '{filepath}' successfully written.")
+
+    # Write default configuration file as well
+    configpath = filepath.with_suffix(filepath.suffix + ".default.conf")
+    configpath.touch(exist_ok=True)
     sys.exit(0)

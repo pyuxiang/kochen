@@ -257,4 +257,35 @@ def generate_fit_label(label, plabels):
     """
     return f"{label}\n" + "\n".join([f"   |  {p}" for p in plabels])
 
+def recipe_generic_plotting():
+    """Lists the most common features of matplotib used thus far.
 
+    Basically as a self-reference for stylistic hints, etc.
+    """
+    xs = ys = [1,2]
+
+    import matplotlib.pyplot as plt
+    fig, axs = plt.subplots(2, 1, figsize=(6,4), dpi=100, sharex=True, height_ratios=[1.5,1])
+
+    # Generic plot
+    plt.sca(axs[0])
+    plt.plot(xs, ys, ".", markersize=3, alpha=0.5, label="label1")
+    plt.plot(xs, ys, linewidth=1, label="label2")
+    plt.ylim(1,2)
+    plt.xlim(2,3)
+    plt.ylabel("y axis")
+    plt.xlabel("x axis")
+    plt.yscale("log")
+    plt.title("top graph")
+    plt.legend()
+
+    # Parasitic axis
+    plt.sca(axs[1])
+    pax = axs[1].twinx()
+    # See above
+
+    # Overall plot information
+    plt.suptitle("Big title", fontsize=12)
+    plt.tight_layout()
+    fig.savefig("savefile.png")
+    plt.show()
