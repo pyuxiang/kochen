@@ -54,13 +54,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy
+from uncertainties import ufloat
 
 # Personal maintained libraries
 # import boiler
 # from fpfind.lib import parse_timestamps as tparser
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
+logger.setLevel(logging.DEBUG)
 '''
 
     text2 = '''
@@ -102,6 +103,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--quiet", action="store_true",
         help="Suppress errors, but will not block logging")
+
+    # Script arguments
+    # parser.add_argument(
+    #     "--ARG",
+    #     help="")
 
     # Arguments
     if len(sys.argv) > 1:
