@@ -41,13 +41,13 @@ References:
 import datetime as dt
 import json
 import logging
-import pathlib
 import re
 import sys
 import time
 import tqdm
 import warnings
 from itertools import product
+from pathlib import Path
 
 import configargparse
 import matplotlib.pyplot as plt
@@ -65,15 +65,17 @@ logger.setLevel(logging.DEBUG)
 '''
 
     text2 = '''
-handler = logging.StreamHandler(stream=sys.stderr)
-handler.setFormatter(
-    logging.Formatter(
-        fmt="{asctime} {levelname:<8s} {funcName}:{lineno} | {message}",
-        datefmt="%Y%m%d_%H%M%S",
-        style="{",
+if not logger.handlers:
+    handler = logging.StreamHandler(stream=sys.stderr)
+    handler.setFormatter(
+        logging.Formatter(
+            fmt="{asctime} {levelname:<8s} {funcName}:{lineno} | {message}",
+            datefmt="%Y%m%d_%H%M%S",
+            style="{",
+        )
     )
-)
-logger.addHandler(handler)
+    logger.addHandler(handler)
+    logger.propagate = False
 
 
 def main(args):
@@ -84,10 +86,9 @@ def check_args(args):
 
 
 if __name__ == "__main__":
-    filename = pathlib.Path(__file__).name
     parser = configargparse.ArgumentParser(
-        default_config_files=[f"{filename}.default.conf"],
-        description="",
+        default_config_files=[f"{Path(__file__).name}.default.conf"],
+        description=__doc__.partition("\n")[0],
     )
 
     # Boilerplate
