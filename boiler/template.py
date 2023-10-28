@@ -39,13 +39,12 @@ References:
 """
 
 import datetime as dt
-import json
+import itertools
 import logging
+import os
 import re
 import sys
 import time
-import tqdm
-import warnings
 from itertools import product
 from pathlib import Path
 
@@ -54,14 +53,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy
+import tqdm
 from uncertainties import ufloat
 
-# Personal maintained libraries
-# import boiler
-# from fpfind.lib import parse_timestamps as tparser
-
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 '''
 
     text2 = '''
@@ -69,7 +64,7 @@ if not logger.handlers:
     handler = logging.StreamHandler(stream=sys.stderr)
     handler.setFormatter(
         logging.Formatter(
-            fmt="{asctime} {levelname:<8s} {funcName}:{lineno} | {message}",
+            fmt="{asctime}\t{levelname:<8s}\t{funcName}:{lineno} | {message}",
             datefmt="%Y%m%d_%H%M%S",
             style="{",
         )
@@ -82,7 +77,10 @@ def main(args):
     pass
 
 def check_args(args):
-    pass
+
+    # Set logging level
+    levels = [logging.WARNING, logging.INFO, logging.DEBUG]
+    logger.setLevel(levels[args.verbose])
 
 
 if __name__ == "__main__":
