@@ -80,7 +80,11 @@ def check_args(args):
 
     # Set logging level
     levels = [logging.WARNING, logging.INFO, logging.DEBUG]
+    args.verbose = min(args.verbose, len(levels)-1)
     logger.setLevel(levels[args.verbose])
+
+    # Print out arguments
+    logger.debug("Arguments: %s", args)
 
 
 if __name__ == "__main__":
