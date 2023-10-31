@@ -86,7 +86,7 @@ def check_args(args):
 if __name__ == "__main__":
     parser = configargparse.ArgumentParser(
         default_config_files=[f"{Path(__file__).name}.default.conf"],
-        description=__doc__.partition("\n")[0],
+        description=__doc__.partition("\\n")[0],
     )
 
     # Boilerplate
