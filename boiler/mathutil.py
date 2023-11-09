@@ -6,6 +6,30 @@ import scipy
 import scipy.optimize
 import uncertainties
 
+# Remember this adage:
+#   There is always some numpy function out there that will
+#   solve your data processing problem.
+#
+# ... at this point, I feel it would be well-served to document
+# what functions would be used in numpy, then try to write a
+# wrapper over them. In other words, stop reinventing the wheel!
+
+
+
+def merge(a, b):
+    """Selects data with common values on first column.
+
+    Examples:
+        >>> a = [(1,2),(2,4)]
+        >>> b = [(2,3),(5,1)]
+        >>> tuple(merge(a, b))
+        ([(2,4)], [(2,3)])
+    """
+    _, aidx, bidx = np.intersect1d(a[:,0], b[:,0], assume_unique=True, return_indices=True)
+    return a[aidx], b[bidx]
+
+        
+
 # Linear interpolation
 def lininterp(new_xs, old_xs, old_ys):
     """Performs a linear interpolation.
