@@ -37,3 +37,14 @@ def findattr(obj, methods=True):
                 or not (methods or inspect.isroutine(getattr(obj, k))): # attributes
             res.append(k)
     return res
+
+
+# Testing Python function runtime
+import timeit
+
+def time():
+    print(timeit.timeit(
+        "combine(a,b)",
+        "from __main__ import combine, a, b",
+        number=10,
+    ))
