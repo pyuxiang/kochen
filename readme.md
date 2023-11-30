@@ -90,3 +90,23 @@ Scripts are commonly archived for reference, either for reuse or for referencing
     or prepare mirrors (i.e. defer to local library if central repository cannot be accessed).
 
 Still a work-in-progress!
+
+----
+
+Some newer updates after a long lull on implementing the deprecation method.
+Firstly, there seems to be some proposal [PEP723](https://peps.python.org/pep-0723/) floating around that are still provisional as of 2023-11-30 (looks like [PEP722](https://peps.python.org/pep-0722/) has been rejected in favor of PEP723). PEP723 suggests to have a following code block for embedding `pyproject.toml` in single-file scripts (arguably important for users who are not necesarily familiar with installing dependencies). Looks like this:
+
+```python
+# /// pyproject
+# [run]
+# requires-python = ">=3.11"
+# dependencies = [
+#   "requests<3",
+#   "rich",
+# ]
+# ///
+```
+
+Note this does not actually fix the problem of having conflicting library versions. We want full backwards compatibility, as far as this library is concerned (hard to control versions on other dependencies, which is the whole point of trying to have this library self-contained).
+
+Had a realization that library versioning should not be controlled by `git`, which limits applicability in cases where the library files are directly copied, or where `git` was not used to clone the repository in the first place. Need to somehow embed the version that is used by the script, hopefully automagically. This looks like a possible method: [Method 1](https://stackoverflow.com/questions/45684307/get-source-script-details-similar-to-inspect-getmembers-without-importing-the) and [Method 2](https://stackoverflow.com/questions/34491808/how-to-get-the-current-scripts-code-in-python) and [Method 3](https://stackoverflow.com/questions/427453/how-can-i-get-the-source-code-of-a-python-function).
