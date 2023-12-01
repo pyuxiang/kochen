@@ -135,12 +135,16 @@ def _search_importline(path, depth=0, max_depth=MAX_IMPORTSEARCH_DEPTH):
             # by traversing down concatenated lines, i.e. '\\n'.
             # Note: 'node.end_lineno' is only available from Python 3.8 [2]
             if basemodule == TARGET_LIBRARY:
-                lineno = node.lineno - 1  # convert to 0-indexed
+                # Find importing module name
+                for name, module in sys.modules.items():
+                    if hasattr(module, "__file__") and module.__file__ == path:
+                        break
+                lineno = node.lineno  # 1-indexed
                 with open(path) as file:
                     lines = file.readlines()
-                while lines[lineno].endswith("\\\n"):
+                while lines[lineno-1].endswith("\\\n"):
                     lineno += 1
-                return path, lineno
+                return name, path, lineno
 
             # Cache modules
             if targetmodule in SEARCHED_MODULES:
@@ -164,12 +168,12 @@ def _search_importline(path, depth=0, max_depth=MAX_IMPORTSEARCH_DEPTH):
 
 try:
     path_main = sys.modules["__main__"].__file__
-    path, lineno = _search_importline(path_main)
+    name, path, lineno = _search_importline(path_main)
 
     # Open file as writable
     with open(path, "r+") as file:
         lines = file.readlines()
-        targetline = lines[lineno].rstrip("\n")
+        targetline = lines[lineno-1].rstrip("\n")
 
         # Check for version string
         VERSION_FOUND = False
@@ -177,13 +181,19 @@ try:
             result = RE_VERSION_STRING.search(targetline)
             if result:
                 major, minor = result.groups()
-                print(f"'{TARGET_LIBRARY}' loaded (v{major}.{minor})")
+                print(
+                    f"'{TARGET_LIBRARY}' loaded (v{major}.{minor}) "
+                    f"from {name}:{lineno}"
+                )
                 VERSION_FOUND = True
 
         if not VERSION_FOUND:
             version = sys.modules[TARGET_LIBRARY].__version__
             major, minor, *_ = version.split(".")
-            print(f"'{TARGET_LIBRARY}' loaded with latest (v{major}.{minor})")
+            print(
+                f"'{TARGET_LIBRARY}' loaded (latest:v{major}.{minor}) "
+                f"from {name}:{lineno}"
+            )
 
 except (KeyError, AttributeError):  # ignore interactive sessions
     pass
