@@ -177,11 +177,13 @@ try:
             result = RE_VERSION_STRING.search(targetline)
             if result:
                 major, minor = result.groups()
-                print(f"'{TARGET_LIBRARY}' loaded with version {major}.{minor}")
+                print(f"'{TARGET_LIBRARY}' loaded (v{major}.{minor})")
                 VERSION_FOUND = True
 
         if not VERSION_FOUND:
-            print(f"'{TARGET_LIBRARY}' loaded with no versioning")
+            version = sys.modules[TARGET_LIBRARY].__version__
+            major, minor, *_ = version.split(".")
+            print(f"'{TARGET_LIBRARY}' loaded with latest (v{major}.{minor})")
 
 except (KeyError, AttributeError):  # ignore interactive sessions
     pass

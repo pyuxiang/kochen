@@ -25,3 +25,5 @@ from boiler.v2 import pathutil
 
 # https://github.com/pyuxiang/gds-toolbox/blob/master/toolbox/parts/common/__init__.py
 """
+
+__version__ = "0.0.8"
