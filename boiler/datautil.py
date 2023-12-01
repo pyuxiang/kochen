@@ -6,6 +6,7 @@
 __all__ = ["pprint", "read_log"]
 
 import datetime as dt
+import json
 import re
 from typing import Optional, Type
 
@@ -31,7 +32,7 @@ def pprint(
         out: Optional filepath to save data.
         pbar: tqdm.ProgressBar.
         print: Determines if should write to console.
-     
+
     Note:
         The default column width of 7 is predicated on the fact that
         10 space-separated columns can be comfortably squeezed into a
@@ -197,8 +198,53 @@ def read_log(filename: str, schema: list, merge: bool = False):
 
     if not is_header_logged:
         raise ValueError("Logfile does not contain a header.")
-    
+
     # Merge headers
     _data = list(zip(*_data))
     _items = tuple(zip(_headers, _data))
     return dict(_items)
+
+class DataEncoder(json.JSONEncoder):
+    """Usage: json.dump(..., cls=data_encoder)"""
+    _DT2STR = lambda x: x.strftime("%Y%m%d_%H%M%S.%f")
+    def default(self, obj):
+        if isinstance(obj, dt.datetime):
+            return {"_dt": obj.strftime("%Y%m%d_%H%M%S.%f")}
+        if isinstance(obj, np.ndarray):
+            if len(obj) > 0 and isinstance(obj[0], dt.datetime):
+                return {"_dt_np": list(map(DataEncoder._DT2STR, obj))}
+            else:
+                return {"_np": obj.tolist()}
+        return super().default(obj)
+
+def data_decoder(dct):
+    """Usage: json.load(..., object_hook=datetime_decoder)"""
+    _str2dt = lambda x: dt.datetime.strptime(x, "%Y%m%d_%H%M%S.%f")
+    if "_dt" in dct:
+        return _str2dt(dct["_dt"])
+    if "_np" in dct:
+        return np.array(dct["_np"])
+    if "_dt_np" in dct:
+        return np.array(list(map(_str2dt, dct["_dt_np"])))
+    return dct
+
+def filecache(func):
+    # TODO: Raise warning if 'cache' keyword already defined.
+    def helper(*args, cache=None, **kwargs):
+        nonlocal func
+        try:
+            with open(cache, "r") as f:
+                result = json.load(f, object_hook=data_decoder)
+            return result
+
+        except:
+            print("Cache loading failed")
+        result = func(*args, **kwargs)
+        with open(cache, "w") as f:
+            json.dump(result, f, cls=DataEncoder)
+        return result
+    return helper
+
+@filecache
+def loader():
+    raise NotImplementedError()

@@ -289,3 +289,76 @@ def recipe_generic_plotting():
     plt.tight_layout()
     fig.savefig("savefile.png")
     plt.show()
+
+def format_xdates(ax, angle=45, format="%-d %b, %-I%P", dx=0, dy=0):
+    # https://stackoverflow.com/a/67459618
+    import matplotlib.dates as mdates
+    from matplotlib.transforms import ScaledTranslation
+    ax_cache = plt.gca()
+    fig = ax.get_figure()
+    plt.sca(ax)
+
+    dformat = mdates.DateFormatter(format)  # e.g. "7 Jun, 4am"
+    ax.xaxis.set_major_formatter(dformat)
+    plt.xticks(rotation=angle, ha="right", rotation_mode="anchor")
+
+    offset = ScaledTranslation(dx / fig.dpi, dy / fig.dpi, fig.dpi_scale_trans)
+    # apply offset to all xticklabels
+    for label in ax.xaxis.get_majorticklabels():
+        label.set_transform(label.get_transform() + offset)
+
+    # Clear ax cache
+    plt.sca(ax_cache)
+
+def get_cwheel(scheme: str = "bright", order=None):
+    from tol_colors import tol_cmap, tol_cset
+    cmap = tol_cset(scheme)
+    i = 0
+    while True:
+        if order is None:
+            yield cmap[i]
+        else:
+            yield cmap[order[i]]
+        i += 1
+
+cwheel = get_cwheel()
+
+from matplotlib.colors import colorConverter as cc
+
+def parse_color_as_rgb(color):
+    """Convert to RGB, each in float [0,1] range."""
+    if isinstance(color, str):
+        if color.startswith("#"):  # hex color
+            r = int(color[1:3], base=16) / 255
+            g = int(color[3:5], base=16) / 255
+            b = int(color[5:7], base=16) / 255
+        else:  # named color
+            r, g, b = cc.to_rgb(color)
+    else:
+        r, g, b, *_ = color  # float values
+        if r > 1 or g > 1 or b > 1:  # raw values
+            r /= 255
+            g /= 255
+            b /= 255
+    return r, g, b
+
+
+def lighten(color, alpha: float = 1, bg_color = "white"):
+    """Convert RGBA into solid RGB.
+
+    Problem with PostScript backend is that transparency is not supported.
+    A workaround is to convert the alpha-based color into a solid RGB color,
+    by blending with the background using 'alpha' as a parameter.
+
+    Reference:
+        [1]: https://stackoverflow.com/a/2645218
+    """
+    color = parse_color_as_rgb(color)
+    bg_color = parse_color_as_rgb(bg_color)
+    result = [(1-alpha)*bv + alpha*v for v,bv in zip(color,bg_color)]
+    return result
+
+def color_axis(ax, color, right=False):
+    ax.spines["right" if right else "left"].set_color(color)
+    ax.yaxis.label.set_color(color)
+    ax.tick_params(axis='y', colors=color)
