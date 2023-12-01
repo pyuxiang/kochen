@@ -62,32 +62,63 @@ References:
     [1]: https://stackoverflow.com/questions/53564301/insert-docstring-attributes-in-a-python-file
 """
 
-import os
-ll = lambda x: print("\n".join([f"{k}: {x[k]}" for k in x]))
-# print(os.getcwd())
-# print("Test submodule")
-
-
 import ast
+import re
 import sys
-main = sys.modules["__main__"]
-path = main.__file__
 
-# Using ast.walk
-# https://stackoverflow.com/a/9049549
+TARGET_LIBRARY = "boiler"
+MAX_IMPORTSEARCH_DEPTH = 3
+SEARCHED_MODULES = set()  # cache visited modules, since imports are also a DAG
+RE_VERSION_STRING = re.compile(r"#.*\sv([0-9]+)\.([0-9]+)")
 
+def _search_importline(path, depth=0, max_depth=MAX_IMPORTSEARCH_DEPTH):
+    """Search for first line reference to import of target library.
 
-# The first time importing of this module occurs, the module itself
-# is frozen and the first versioning string will be read.
-def walk_modules(path, depth=0, max_depth=2):
-    """Should be a DAG."""
+    This code works by looking up currently imported modules of the root
+    script, and performing a depth-first search. The presence of this line
+    is guaranteed via 'sys.modules', since the cascaded library imports will be
+    cached, and the target library is likely not used as part of stdlib.
+
+    To limit performance impact of this runtime search, import the library
+    in the root script directly. Future possible work in adding an import
+    comment for the target library automatically in the root script, possibly
+    with the use of the 'isort' module.
+
+    If the root script is an interactive session, this function will not
+    trigger (i.e. the latest version of the library will always be used).
+
+    This function ideally will only be triggered once, since the imported
+    library will be frozen (so any subsequent import statements will use the
+    cached library instead). The use of the `ast` module for searching is
+    nominally ideal since the code traversal in running code should be close
+    to the manual traversal of the syntax tree, and import statements which
+    are part of comments are safely ignored.
+
+    Code adapted from an implementation from StackOverflow [1].
+
+    Max depth needs to be implemented since stdlib is treated like a regular
+    library, until the names are frozen from Python 3.10 onwards.
+
+    References:
+        [1]: Code source, https://stackoverflow.com/a/9049549
+        [2]: AST get_source_segment documentation, https://docs.python.org/3.8/library/ast.html#ast.get_source_segment
+        [3]: Standard library module names, https://docs.python.org/3/library/sys.html#sys.stdlib_module_names
+    """
+
+    # Terminate search if too deep
     if depth > max_depth:
         return
 
-    with open(path) as file:
-        root = ast.parse(file.read(), path)
+    # Parse file as AST
+    try:
+        with open(path) as file:
+            root = ast.parse(file.read(), path)
+    except UnicodeDecodeError:  # ignore file if cannot decode properly
+        return
 
     for node in ast.walk(root):
+
+        # Process node only if they are import statements
         if isinstance(node, ast.Import):
             module = None
         elif isinstance(node, ast.ImportFrom):
@@ -95,61 +126,62 @@ def walk_modules(path, depth=0, max_depth=2):
         else:
             continue
 
+        # Only need to identify the base library of the module
         for n in node.names:
-            # Get base module name, two main formats
-            # import os as oss    -> (n.name = os, n.asname = oss)
-            # from os import walk as walks -> (n.module = os, n.name = walk, n.asname = walks)
-            targetmodule = n.name
-            if module:
-                targetmodule = module
+            targetmodule = module if module else n.name
             basemodule = targetmodule.split(".")[0]
-            print(basemodule)
 
-            # Get alias of imported thing
-            alias = n.name
-            if n.asname:
-                alias = n.asname
+            # Get line number where the version information is expected,
+            # by traversing down concatenated lines, i.e. '\\n'.
+            # Note: 'node.end_lineno' is only available from Python 3.8 [2]
+            if basemodule == TARGET_LIBRARY:
+                lineno = node.lineno - 1  # convert to 0-indexed
+                with open(path) as file:
+                    lines = file.readlines()
+                while lines[lineno].endswith("\\\n"):
+                    lineno += 1
+                return path, lineno
 
-            # end_lineno is generally valid, other than the syntax with
-            # import boiler; ... in them. But this is only available from
-            # Python 3.8 onwards. See [2]:
-            # https://docs.python.org/3.8/library/ast.html#ast.get_source_segment
-            #
-            # Alternative is to enforce the following form when importing boiler
-            # modules, and manually scanning for the end of line using '\\n'.
-            #
-            # Note that this is valid:
-            # from boiler import (  # comment
-            #     versioning
-            # )
-            print("  " * depth, node.lineno, targetmodule, n.name, alias)
-            if basemodule == "boiler":
-                print(path, node.lineno)
-                return (path, node.lineno)
+            # Cache modules
+            if targetmodule in SEARCHED_MODULES:
+                continue
+            else:
+                SEARCHED_MODULES.add(targetmodule)
+
+            # Ignore modules that have not been imported, or if not a file,
+            # e.g. stdlib or C extensions
             try:
                 next_module = sys.modules[targetmodule]
-                result = walk_modules(next_module.__file__, depth+1, max_depth)
-                if result is not None:
-                    return result  # propagate result back down
-            except KeyError:
-                print("Ignore invalid search path")
-                # print(sorted(sys.modules.keys()))
-            except AttributeError:
-                print("Not a file, continuing...")
-            except UnicodeDecodeError:
-                print("Problematic import")
+                target = next_module.__file__
+            except (KeyError, AttributeError):
+                continue
+
+            # Continue traversal and terminate immediately upon completion
+            result = _search_importline(target, depth+1, max_depth)
+            if result is not None:
+                return result
 
 
+try:
+    path_main = sys.modules["__main__"].__file__
+    path, lineno = _search_importline(path_main)
 
-path, lineno = walk_modules(main.__file__)
-with open(path, "r+") as file:
-    lines = file.readlines()
-    print(lines[lineno-1].rstrip("\n"))
+    # Open file as writable
+    with open(path, "r+") as file:
+        lines = file.readlines()
+        targetline = lines[lineno].rstrip("\n")
 
-# walk_modules("/srv/samba/lightstick/by-scripts/parse_qkdserverlogs/parse_qkdserverlog.py")
+        # Check for version string
+        VERSION_FOUND = False
+        if "#" in targetline:
+            result = RE_VERSION_STRING.search(targetline)
+            if result:
+                major, minor = result.groups()
+                print(f"'{TARGET_LIBRARY}' loaded with version {major}.{minor}")
+                VERSION_FOUND = True
 
+        if not VERSION_FOUND:
+            print(f"'{TARGET_LIBRARY}' loaded with no versioning")
 
-# Identify whether library is part of stdlib
-# New as of Python 3.10
-# https://docs.python.org/3/library/sys.html#sys.stdlib_module_names
-# sys.stdlib_module_names
+except (KeyError, AttributeError):  # ignore interactive sessions
+    pass
