@@ -26,14 +26,8 @@ from boiler.v2 import pathutil
 # https://github.com/pyuxiang/gds-toolbox/blob/master/toolbox/parts/common/__init__.py
 """
 
-import sys
+# Trigger versioning process
+import boiler.versioning
 
-# Backward compatibility for importlib.metadata
-pyversion = f"{sys.version_info.major}.{sys.version_info.minor}"
-if pyversion < "3.8":
-    import importlib_metadata as imdata
-else:
-    import importlib.metadata as imdata
+__version__ = boiler.versioning.__version__
 
-# Dynamically retrieve library version information
-__version__ = imdata.version("boiler")

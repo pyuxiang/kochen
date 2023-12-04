@@ -28,7 +28,7 @@ def merge(a, b):
     _, aidx, bidx = np.intersect1d(a[:,0], b[:,0], assume_unique=True, return_indices=True)
     return a[aidx], b[bidx]
 
-        
+
 
 # Linear interpolation
 def lininterp(new_xs, old_xs, old_ys):
