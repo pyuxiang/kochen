@@ -310,3 +310,10 @@ def BoilerLoader(importlib.abc.FileLoader):  # not sure if correct loader
 ```
 
 Okay I am done here for today. Back to actual work.
+
+Some interesting last minute stuff:
+
+* Magic numbers are provided to distinguish compiled Python binaries, see [here](https://github.com/python/cpython/blob/main/Lib/importlib/_bootstrap_external.py#L220).
+* Import code in CPython are achieved by `PathFinder` and `FileFinder` [here](https://github.com/python/cpython/blob/main/Lib/importlib/_bootstrap_external.py#L1752):
+    * `PathFinder.find_spec` implementation [here](https://github.com/python/cpython/blob/main/Lib/importlib/_bootstrap_external.py#L1533)
+    * Time to do some code tracing!
