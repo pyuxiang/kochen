@@ -28,7 +28,7 @@ def merge(a, b):
     _, aidx, bidx = np.intersect1d(a[:,0], b[:,0], assume_unique=True, return_indices=True)
     return a[aidx], b[bidx]
 
-        
+
 
 # Linear interpolation
 def lininterp(new_xs, old_xs, old_ys):
@@ -444,3 +444,51 @@ def histogram(a, bins=10, range=None, symmetric: bool = False, endpoint: bool = 
     if not symmetric:
         return ys[:-1], xs[:-2]
     return ys[:-1], (xs[1:-1] + xs[:-2]) / 2
+
+def kth_min(a, k=1):
+    """Returns least-k (1-indexed) values of array.
+
+    Uses np.partition to perform the required O(n) worst-case partitioning,
+    then extract the value after partitioning. This algorithm is not stable,
+    i.e. duplicates are not guaranteed to be in order.
+
+    'k' can either be a single integer, or a list of integers. The output will
+    share the same container as 'k'. 'k' cannot contain 0.
+
+    Examples:
+        >>> a = [1,2,3,3,5,5,7,8,9]
+        >>> np.random.shuffle(a)
+        >>> kth_min(a)
+        1
+        >>> kth_min(a, 2)
+        2
+        >>> list(kth_min(a, (1,-9,8,9,3,4)))
+        [1, 9, 8, 9, 3, 3]
+
+    Note:
+        1-indexed to follow usual conventions of kth-order statistics. This
+        also makes denoting kth values consistent with negative kth values,
+        e.g. 1 => 1st smallest, -1 => 1st largest.
+    """
+    k = np.array(k)
+    return_as_int = k.ndim == 0
+    k = k.reshape(-1)  # force into list
+
+    # Check if k in bounds
+    if not np.all([(-len(a) <= v <= len(a) and v != 0) for v in k]):
+        raise ValueError(f"Out-of-bounds indices: '{k}'")
+
+    # Change positive integers from 1- to 0-indexed
+    k = [(v-1 if v > 0 else v) for v in k]
+
+    # Perform partitioning and return
+    if return_as_int:
+        k = np.array(k[0])
+    return np.partition(a, k)[k]
+
+def kth_max(a, k=1):
+    """Inverse of kth_min, to return max values instead.
+
+    Uses 'kth_min' internally. See documentation for 'kth_min'.
+    """
+    return kth_min(a, -np.array(k))
