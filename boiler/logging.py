@@ -1,6 +1,8 @@
 import logging
 import sys
 
+_LOGGING_FMT = "{asctime}\t{levelname:<7s}\t{funcName}:{lineno}\t| {message}"
+
 class LoggingOverrideFormatter(logging.Formatter):
     """Supports injection of overrides during logging.
 
@@ -141,3 +143,23 @@ def label2level(label):
         "error": logging.ERROR,
     }
     return LOG_LEVELS.get(label, logging.WARNING)
+
+def set_default_handlers(logger, stream=sys.stderr, file="", mode="w"):
+    formatter = LoggingOverrideFormatter(fmt=_LOGGING_FMT, datefmt="%Y%m%d_%H%M%S", style="{")
+
+    if stream:
+        handler = logging.StreamHandler(stream=stream)
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+
+    if file:
+        handler = logging.FileHandler(filename=file, mode=mode)
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+
+    logger.propagate = False
+
+def set_logging_level(logger, verbosity):
+    levels = [logging.WARNING, logging.INFO, logging.DEBUG]
+    verbosity = min(verbosity, len(levels)-1)
+    logger.setLevel(levels[verbosity])

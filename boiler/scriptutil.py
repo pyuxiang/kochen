@@ -1,11 +1,13 @@
 import argparse
+import os
 import pathlib
+import re
 import sys
 
 import configargparse
 
 # https://stackoverflow.com/a/23941599
-class ArgparseCustomFormatter(argparse.HelpFormatter):
+class ArgparseCustomFormatter(argparse.RawDescriptionHelpFormatter):
 
     RAW_INDICATOR = "rawtext|"
 
@@ -45,7 +47,7 @@ def generate_default_parser(moduledoc):
     script_name = pathlib.Path(sys.argv[0]).name
     parser = configargparse.ArgumentParser(
         default_config_files=[f"{script_name}.default.conf"],
-        description=moduledoc.partition("Changelog:")[0],
+        description=parse_docstring_description(moduledoc),
         formatter_class=ArgparseCustomFormatter,
         add_help=False,
     )
@@ -66,3 +68,48 @@ def parse_args_or_help(parser):
         sys.exit(1)
 
     return args
+
+def guarantee_path(path, type=None):
+    """Checks if path is of specified type, and returns wrapper to Path."""
+
+    assert type in (None, "f", "d", "p")  # file, directory, pipe
+    path = pathlib.Path(path)
+
+    # If no filetype specified
+    # Useful for when path is expected to exist, or when it
+    # doesn't make sense to create them, e.g. devices/sockets
+    if type is None:
+        if not path.exists():
+            raise ValueError(f"Path '{path}' does not exist")
+        return path
+
+    # Filetype has been specified -> check if type matches
+    if path.exists():
+        if type == "f" and not path.is_file():
+            raise ValueError(f"Path '{path}' is not a file")
+        if type == "d" and not path.is_dir():
+            raise ValueError(f"Path '{path}' is not a directory")
+        if type == "p" and not path.is_fifo():
+            raise ValueError(f"Path '{path}' is not a pipe")
+        return path
+
+    # Filetype specified but path does not exist -> create
+    if type == "f":
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+    elif type == "d":
+        path.mkdir(parents=True)
+    elif type == "p":
+        os.mkfifo(str(path))
+    return path
+
+def parse_docstring_description(docstring):
+    placeholder = "~~~PLACEHOLDER~~~"
+    # Remove all changelog information
+    d = docstring.partition("Changelog:")[0]
+
+    # Replace all newlines except the first
+    d = re.sub(r"\n+", placeholder, d, count=1)
+    d = re.sub(r"\n+", " ", d)
+    d = re.sub(placeholder, "\n\n", d)
+    return d
