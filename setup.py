@@ -15,7 +15,7 @@ requirements_dev = [
 # semantics
 setuptools.setup(
     name="boiler",
-    version="0.0.8",
+    version="0.0.9",
     description="A compilation of boilerplate code",
     url="https://pyuxiang.com",
     author="Justin",
@@ -26,5 +26,5 @@ setuptools.setup(
     extras_require={
         "dev": requirements_dev,
     },
-    python_requires=">=3.6",
+    python_requires=">=3.5",
 )

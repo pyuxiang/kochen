@@ -492,3 +492,35 @@ def kth_max(a, k=1):
     Uses 'kth_min' internally. See documentation for 'kth_min'.
     """
     return kth_min(a, -np.array(k))
+
+def find(array, value=lambda x: x != 0):
+    """Returns index of first occurrence of value or condition.
+
+    By default, searches for first nonzero value. Works only for 1D arrays.
+
+    Args:
+        array: Numpy array to search within (for efficiency).
+        value: Number, or callable condition that returns true.
+
+    Note:
+        This will likely never be implemented in numpy, because the issue has been
+        up since 2012. Justification for not implementing is because most of the
+        numpy operations are non-lazy, so it's difficult/counter-intuitive to
+        implement a lazy pipeline for this operation. This, and that the runtime
+        will not be as bad as the other operations.
+
+        This function was lifted from [1], using batching to search incrementally.
+
+    References:
+        [1]: <https://github.com/numpy/numpy/issues/2269#issuecomment-1408124858>
+    """
+    op = value if callable(value) else lambda x: x == value
+    i = 1
+    while i < len(array):
+        indices = np.where(op(array[i-1 : 2*i-1]))[0]
+        if len(indices) > 0:
+            break
+        i <<= 1
+    else:
+        return None
+    return (i-1) + indices[0]
