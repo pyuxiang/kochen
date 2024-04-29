@@ -83,12 +83,12 @@ and stable. This is reflected more simply in [StackOverflow](https://stackoverfl
 Functions to write as per normal:
 
 ```python
-# boiler/pathlib.py
+# scribbles/pathlib.py
 def read_path(*args):
     pass  # function definition here
 
 # main.py
-import boiler.pathlib as pathlib
+import scribbles.pathlib as pathlib
 pathlib.read_path
 ```
 
@@ -99,18 +99,18 @@ Specific versions of functions can be imported by using a version directive
 in the module import path (perhaps via a shim).
 
 ```python
-# boiler/legacy/pathlib.py
+# scribbles/legacy/pathlib.py
 @version(1)
 def read_path(*args):
     pass
 
-# boiler/pathlib.py
+# scribbles/pathlib.py
 def read_path(*args):
     pass  # updated function definition
 
 # main.py
-import boiler.v1.pathlib as pathlib_v1
-import boiler.pathlib as pathlib
+import scribbles.v1.pathlib as pathlib_v1
+import scribbles.pathlib as pathlib
 pathlib_v1.read_path
 pathlib.read_path
 ```
@@ -122,7 +122,7 @@ loaded within the function itself, or we avoid this problem entirely by
 ensuring modules are generally standalone. The former is p
 
 
-TODO: To think about the merits and demerits of this proposal.        
+TODO: To think about the merits and demerits of this proposal.
 
 Extremely legacy code should be shelved somewhere with version labelling,
 outside the main codebase. These can then be dynamically pulled when

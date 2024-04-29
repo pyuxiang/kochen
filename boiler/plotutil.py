@@ -244,7 +244,7 @@ def generate_fit_label(label, plabels):
         plabels: Output from 'mathutil.fit'.
 
     Examples:
-        >>> from boiler.mathutil import fit
+        >>> from scribbles.mathutil import fit
         >>> popt, plabels = fit(f, xs, ys, labels=True)
         >>> # plabels = ['A = 3.77+/-0.05', 'μ = 7.14+/-0.04', 'σ = 0.880+/-0.030']
         >>> label = generate_fit_label("Signal curve", plabels)

@@ -14,17 +14,17 @@ requirements_dev = [
 # pip ~21.3.1 seems to behave poorly with newer pyproject.toml
 # semantics
 setuptools.setup(
-    name="boiler",
-    version="0.0.9",
-    description="A compilation of boilerplate code",
+    name="scribbles",
+    version="0.2024.1",
+    description="A compilation of boilerplate scribbles",
     url="https://pyuxiang.com",
-    author="Justin",
+    author="Justin Peh Yu Xiang",
     author_email="justin@pyuxiang.com",
-    license="GPLv3",
+    license="GPLv2",
     packages=setuptools.find_packages(),
     install_requires=requirements,
     extras_require={
         "dev": requirements_dev,
     },
-    python_requires=">=3.5",
+    python_requires=">=3.8",
 )

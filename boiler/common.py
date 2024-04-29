@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Justin, 2022-12-21
-"""Common utilities for boiler framework.
+"""Common utilities for scribbles framework.
 
 """
 
@@ -30,7 +30,7 @@ def version(version_str: str, namespace: Optional[str] = None):
         # TODO(Justin): Check if necessary, perhaps for compatibility
         #               with other libraries.
         return func
-    
+
     # Assign namespace to local filename
     if namespace is None:
 
@@ -57,7 +57,7 @@ check_version_consistency()
 
 def __getattr__(name):
     print(name)
-    
+
     # Dynamically pull function with current version
     # as upper bound.
 
@@ -72,11 +72,11 @@ def test_identitytest(value):
     return f"{value}_v1"
 
 @version("2")
-def test_identitytest(value):    
+def test_identitytest(value):
     return f"{value}_v2"
 
 @version("2.1")
-def test_identitytest(value):    
+def test_identitytest(value):
     return f"{value}_v2.1"
 
 print(_dynamic_loader)

@@ -8,10 +8,10 @@ Scripts should store metadata about the library version, but within the
 script itself to avoid OS-specific metadata conventions (Linux and NT store
 metadata using different methods). The way to store this should not be
 via injecting into arbitrary docstrings, but to some common identifier.
-A straightforward candidate is `import boiler` and their varieties, i.e.
+A straightforward candidate is `import scribbles` and their varieties, i.e.
 
 ```
-import boiler  # some metadata here
+import scribbles  # some metadata here
 ```
 
 
@@ -22,18 +22,18 @@ An import chain, in the most general sense, looks something like:
 ```
 └─ main
     └─ helper
-        └─ boiler
+        └─ scribbles
             └─ versioning
 ```
 
-This makes it important to identify which file the `import boiler` line
+This makes it important to identify which file the `import scribbles` line
 is located for annotation. And also to annotate internal annotations within
 the library itself to prepare for upgrading.
 
 Another important note regarding the `__main__` module (which can be accessed
 via `sys.modules`): the `__file__` attribute containing the filepath will
 not exist if the main script is an interactive session. This likely means the
-versioning functionality may need to be aborted if the 'boiler' library is
+versioning functionality may need to be aborted if the 'scribbles' library is
 directly imported from the interactive session.
 
 Some useful tools: `os.getcwd()`, `sys.modules['__main__'].__file__',
@@ -66,7 +66,7 @@ import ast
 import re
 import sys
 
-TARGET_LIBRARY = "boiler"
+TARGET_LIBRARY = "scribbles"
 MAX_IMPORTSEARCH_DEPTH = 3
 SEARCHED_MODULES = set()  # cache visited modules, since imports are also a DAG
 RE_VERSION_STRING = re.compile(r"#.*\sv([0-9]+)\.([0-9]+)")

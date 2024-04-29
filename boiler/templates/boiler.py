@@ -26,13 +26,13 @@ import scipy
 import tqdm
 from uncertainties import ufloat
 
-import boiler.scriptutil
-import boiler.logging
+import scribbles.scriptutil
+import scribbles.logging
 
 logger = logging.getLogger(__name__)
 
 def main():
-    parser = boiler.scriptutil.generate_default_parser(__doc__)
+    parser = scribbles.scriptutil.generate_default_parser(__doc__)
 
     # Boilerplate
     pgroup_config = parser.add_argument_group("display/configuration")
@@ -62,9 +62,9 @@ def main():
     #     help="")
 
     # Parse arguments and configure logging
-    args = boiler.scriptutil.parse_args_or_help(parser)
-    boiler.logging.set_default_handlers(logger, file=args.logging)
-    boiler.logging.set_logging_level(logger, args.verbosity)
+    args = scribbles.scriptutil.parse_args_or_help(parser)
+    scribbles.logging.set_default_handlers(logger, file=args.logging)
+    scribbles.logging.set_logging_level(logger, args.verbosity)
     logger.debug("%s", args)
 
     # Insert code here

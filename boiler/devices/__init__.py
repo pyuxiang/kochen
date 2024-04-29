@@ -1,2 +1,2 @@
-import boiler.devices.motor
-import boiler.devices.timestamp
+import scribbles.devices.motor
+import scribbles.devices.timestamp

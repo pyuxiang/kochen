@@ -64,7 +64,7 @@ Scripts are commonly archived for reference, either for reuse or for referencing
     cannot be reasonably maintained
     (e.g. porting of `numpy` functions is not feasible long-term - will
     eventually deviate from updated implementations) should be delegated to third-party libraries.
-* **Anti-pattern**: Avoid deploying of library as a standalone 
+* **Anti-pattern**: Avoid deploying of library as a standalone
 
 **Problem**: Older API may depend on older implementations of third-party libraries.
 
@@ -110,3 +110,7 @@ Firstly, there seems to be some proposal [PEP723](https://peps.python.org/pep-07
 Note this does not actually fix the problem of having conflicting library versions. We want full backwards compatibility, as far as this library is concerned (hard to control versions on other dependencies, which is the whole point of trying to have this library self-contained).
 
 Had a realization that library versioning should not be controlled by `git`, which limits applicability in cases where the library files are directly copied, or where `git` was not used to clone the repository in the first place. Need to somehow embed the version that is used by the script, hopefully automagically. This looks like a possible method: [Method 1](https://stackoverflow.com/questions/45684307/get-source-script-details-similar-to-inspect-getmembers-without-importing-the) and [Method 2](https://stackoverflow.com/questions/34491808/how-to-get-the-current-scripts-code-in-python) and [Method 3](https://stackoverflow.com/questions/427453/how-can-i-get-the-source-code-of-a-python-function).
+
+Some goals:
+
+* Backward compatibility only up till Py3.6, because the lab

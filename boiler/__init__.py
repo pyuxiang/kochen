@@ -5,16 +5,16 @@
 # _cwd = _Path(__file__).parent.glob("*.py")
 # __all__ = [fn.stem for fn in _cwd if fn.stem != "__init__"]
 
-# import boiler.devices
+# import scribbles.devices
 
 
 """
-Sets whatever is exposed in the `boiler` namespace.
+Sets whatever is exposed in the `scribbles` namespace.
 """
 
 """
-from boiler.v1 import pathutil
-from boiler.v2 import pathutil
+from scribbles.v1 import pathutil
+from scribbles.v2 import pathutil
 
 
 # for subpackage_name in pathlib.Path().iterdir():
@@ -36,4 +36,4 @@ else:
     import importlib.metadata as imdata
 
 # Dynamically retrieve library version information
-__version__ = imdata.version("boiler")
+__version__ = imdata.version("scribbles")
