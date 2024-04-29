@@ -1,0 +1,34 @@
+[project]
+name = "scribbles"
+version = "0.2024.1"
+description = "A compilation of boilerplate scribbles"
+readme = "README.md"
+requires-python = ">=3.8"
+license = "GPL-2.0-or-later"
+authors = [
+  { name = "Justin Peh Yu Xiang", email = "pehyuxiang@gmail.com" },
+]
+keywords = [
+  "script", "boilerplate", "recipe",
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Education",
+  "License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering",
+]
+dependencies = [
+  "numpy",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
