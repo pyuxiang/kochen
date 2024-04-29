@@ -83,12 +83,12 @@ and stable. This is reflected more simply in [StackOverflow](https://stackoverfl
 Functions to write as per normal:
 
 ```python
-# scribbles/pathlib.py
+# kochen/pathlib.py
 def read_path(*args):
     pass  # function definition here
 
 # main.py
-import scribbles.pathlib as pathlib
+import kochen.pathlib as pathlib
 pathlib.read_path
 ```
 
@@ -99,18 +99,18 @@ Specific versions of functions can be imported by using a version directive
 in the module import path (perhaps via a shim).
 
 ```python
-# scribbles/legacy/pathlib.py
+# kochen/legacy/pathlib.py
 @version(1)
 def read_path(*args):
     pass
 
-# scribbles/pathlib.py
+# kochen/pathlib.py
 def read_path(*args):
     pass  # updated function definition
 
 # main.py
-import scribbles.v1.pathlib as pathlib_v1
-import scribbles.pathlib as pathlib
+import kochen.v1.pathlib as pathlib_v1
+import kochen.pathlib as pathlib
 pathlib_v1.read_path
 pathlib.read_path
 ```

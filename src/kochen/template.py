@@ -2,7 +2,7 @@
 """
 
 Examples:
-    $ python3 -m scribbles.template my_new_python_script
+    $ python3 -m kochen.template my_new_python_script
 """
 
 import datetime as dt

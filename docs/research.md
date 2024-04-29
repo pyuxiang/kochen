@@ -146,7 +146,7 @@ https://peps.python.org/pep-0451/)).
 [<class '_frozen_importlib.BuiltinImporter'>, <class '_frozen_importlib.FrozenImporter'>, <class '_frozen_importlib_external.PathFinder'>]
 
 # Example from another installation
-[<_distutils_hack.DistutilsMetaFinder object at 0x7febadd66410>, <class '_frozen_importlib.BuiltinImporter'>, <class '_frozen_importlib.FrozenImporter'>, <class '_frozen_importlib_external.PathFinder'>, <class '__editable___scribbles_0_1_0_finder._EditableFinder'>]
+[<_distutils_hack.DistutilsMetaFinder object at 0x7febadd66410>, <class '_frozen_importlib.BuiltinImporter'>, <class '_frozen_importlib.FrozenImporter'>, <class '_frozen_importlib_external.PathFinder'>, <class '__editable___kochen_0_1_0_finder._EditableFinder'>]
 
 # Warning: may differ across compilations
 >>> sys.builtin_module_names  # contains names of built-in modules, defined only from 3.10
@@ -266,13 +266,13 @@ In other words, the injection point is `spec.loader.exec_module(module)`, and we
 
 ```python
 # Following the `import_module` code
-import_module("scribbles.versioning")  # full path
-import_module(".mathutil", "scribbles")  # relative path
-import_module("scribbles.v2.mathutil")  # what we want
+import_module("kochen.versioning")  # full path
+import_module(".mathutil", "kochen")  # relative path
+import_module("kochen.v2.mathutil")  # what we want
 
 # Parent module and child directories
-absolute_name = "scribbles.v2"
-parent = sys.modules["scribbles"]  # guaranteed
+absolute_name = "kochen.v2"
+parent = sys.modules["kochen"]  # guaranteed
 child_name = "v2"
 path = parent.__spec__.submodule_search_locations
 
@@ -280,27 +280,27 @@ path = parent.__spec__.submodule_search_locations
 # e.g. child_name <= parent.__version__
 
 # Injected finder
-# We are done here once we define the injected_finder, i.e. ScribblesFinder
+# We are done here once we define the injected_finder, i.e. KochenFinder
 spec = injected_finder.find_spec(absolute_name, path)
 
 #...
 
 # Defining the finder now
-sys.meta_paths.append(ScribblesFinder)
+sys.meta_paths.append(KochenFinder)
 
 # Note this has no instantiation (as opposed to PathEntryFinder)
-class ScribblesFinder(importlib.abc.MetaPathFinder):
+class KochenFinder(importlib.abc.MetaPathFinder):
     @staticmethod
     def find_spec(fullname, path, target=None):
         # We ignore 'target' here (likely the parent module object),
         # since we have a clear idea of what we want
-        # fullname == "scribbles.v2"
-        # path == <root to scribbles library>
+        # fullname == "kochen.v2"
+        # path == <root to kochen library>
 
         # Goal here to define a custom loader to force a namespace
-        return ScribblesLoader()
+        return KochenLoader()
 
-def ScribblesLoader(importlib.abc.FileLoader):  # not sure if correct loader
+def KochenLoader(importlib.abc.FileLoader):  # not sure if correct loader
     def create_module(spec):
         return None  # let system create module
     def exec_module(module):

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Justin, 2022-12-21
-"""Common utilities for scribbles framework.
+"""Common utilities for kochen framework.
 
 """
 
