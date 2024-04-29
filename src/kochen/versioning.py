@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Performs versioning of boiler library files.
+"""Performs versioning of kochen library files.
 
 
 ## How should versioning metadata be stored
@@ -65,11 +65,56 @@ References:
 import ast
 import re
 import sys
+from typing import Optional
+
+# Backward compatibility for importlib.metadata
+pyversion = f"{sys.version_info.major}.{sys.version_info.minor}"
+import importlib.metadata as imdata
+
+# Dynamically retrieve library version information
+__version__ = imdata.version("boiler")
+
+_cache = {}
+def _version(version_str: str, namespace: Optional[str] = None):
+    def cacher(func):
+
+        # Cache function in loader for dynamic calls
+        if namespace not in _cache:
+            _cache[namespace] = {}
+        _cache[namespace][version_str] = func
+
+        # TODO(Justin): Remove this patch that ignores namespac
+        if version_str not in _cache:
+            _cache[version_str] = {}
+        _cache[version_str][func.__name__] = func
+
+        # Part of static compilation, might be needed for plain compile
+        # otherwise, 'common.test_function' will be assigned None.
+        # TODO(Justin): Check if necessary, perhaps for compatibility
+        #               with other libraries.
+        return func
+
+    # Assign namespace to local filename
+    if namespace is None:
+
+        # Retrieve only filename excl. extension,
+        # so as to avoid importing pathlib
+        _namespace = __file__
+        if "/" in _namespace:
+            _namespace = _namespace.split("/")[-1]
+        if "." in _namespace:
+            _namespace = _namespace[:_namespace.index(".")]
+        namespace = _namespace
+
+    return cacher
+
+def get_version(namespace):
+    return lambda version_str: _version(version_str, namespace)
 
 TARGET_LIBRARY = "kochen"
 MAX_IMPORTSEARCH_DEPTH = 3
 SEARCHED_MODULES = set()  # cache visited modules, since imports are also a DAG
-RE_VERSION_STRING = re.compile(r"#.*\sv([0-9]+)\.([0-9]+)")
+RE_VERSION_STRING = re.compile(r"#.*\sv([0-9]+)\.?([0-9]+)?")
 
 def _search_importline(path, depth=0, max_depth=MAX_IMPORTSEARCH_DEPTH):
     """Search for first line reference to import of target library.
@@ -181,17 +226,21 @@ try:
             result = RE_VERSION_STRING.search(targetline)
             if result:
                 major, minor = result.groups()
+                if minor is None:
+                    minor = "0"  # force lowest version
+                version = f"{major}.{minor}"
                 print(
-                    f"'{TARGET_LIBRARY}' loaded (v{major}.{minor}) "
+                    f"'{TARGET_LIBRARY}' loaded (v{version}) "
                     f"from {name}:{lineno}"
                 )
                 VERSION_FOUND = True
 
         if not VERSION_FOUND:
-            version = sys.modules[TARGET_LIBRARY].__version__
+            version = __version__
             major, minor, *_ = version.split(".")
+            version = f"{major}.{minor}"
             print(
-                f"'{TARGET_LIBRARY}' loaded (latest:v{major}.{minor}) "
+                f"'{TARGET_LIBRARY}' loaded (latest:v{version}) "
                 f"from {name}:{lineno}"
             )
 
