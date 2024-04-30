@@ -348,9 +348,39 @@ def get_namespace_version(namespace):
     """Returns 'version' with a fixed namespace, for module-wide versioning."""
     return partial(__kochen_version, namespace=namespace)
 
+def cleanup(globals_ref, namespace=None):
+    """Clears function references from namespace.
+
+    Typically used at the end of the module using the versioning system.
+
+    'module.__getattr__' will only call if the associated attribute is
+    missing from the definition in the module, i.e.
+
+        del test_identitytest
+
+    To avoid burdening the user with manual cleanup, this function does the
+    same thing, by looking up function names that have been stored by 'version'
+    and popping these off the module's references. The call is replaced by,
+
+        cleanup(globals())
+
+    Note the 'globals_ref' needs to be passed because the scope of globals is restricted to the module within which it is defined, i.e. using 'globals()'
+    within 'versioning.cleanup' will return the globals in 'versioning'.
+    """
+    if (ns := __kochen_f_refmap.get(namespace)) is None:
+        return
+    for fname in ns.keys():
+        if fname in globals_ref:
+            globals_ref.pop(fname)
+    return
+
+__kochen_cleanup = cleanup
+
+def get_namespace_cleanup(namespace):
+    return partial(__kochen_cleanup, namespace=namespace)
+
 def search(fname, namespace=None):
     """Returns latest compatible function."""
-    print(fname, namespace, __file__)
     if (ns := __kochen_f_cache.get(namespace)) is None \
             or (result := ns.get(fname)) is None:
         raise AttributeError(f"'{fname}' is not versioned/does not exist.")
@@ -363,10 +393,24 @@ def get_namespace_search(namespace):
     return partial(__kochen_search, namespace=namespace)
 
 def get_namespace_versioning(namespace):
-    """Convenience function."""
+    """Convenience function.
+
+    Example:
+
+        #!/usr/bin/env python3
+        from kochen.versioning import get_namespace_versioning
+        version, cleanup, __getattr__ = get_namespace_versioning(__name__)
+
+        @version("0.2024.1")
+        def f(value):
+            return value
+
+        cleanup(globals())
+    """
     version = get_namespace_version(namespace)
+    cleanup = get_namespace_cleanup(namespace)
     search = get_namespace_search(namespace)
-    return version, search
+    return version, cleanup, search
 
 def search_versioned(fname, version, namespace=None):
     """Returns desired function cached."""
