@@ -317,19 +317,3 @@ Some interesting last minute stuff:
 * Import code in CPython are achieved by `PathFinder` and `FileFinder` [here](https://github.com/python/cpython/blob/main/Lib/importlib/_bootstrap_external.py#L1752):
     * `PathFinder.find_spec` implementation [here](https://github.com/python/cpython/blob/main/Lib/importlib/_bootstrap_external.py#L1533)
     * Time to do some code tracing!
-
-## Code tracing time
-
-Tracing the import flow of a versioned import - could be nested within a subscript, or not:
-
-```python
-import kochen  # 3.6
-```
-
-This triggers the usual module/library finding. Once found, the `__init__.py` code is first imported. This is:
-
-```python
-import kochen.versioning
-```
-
-which sets the `__version__` string obtained from the `importlib.metadata` routine (we do this because the version upping is set in `pyproject.toml`, instead of the other way around - the latest PEPs seem to include support for dynamic versioning).

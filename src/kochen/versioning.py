@@ -315,26 +315,18 @@ def version(version_str: str, namespace: Optional[str] = None):
     def helper(f):
         # Cache function in loader for dynamic calls
         fname = f.__name__
-        refmap = __kochen_f_refmap
 
-        # Cache all versioned functions
-        if namespace not in refmap:
-            refmap[namespace] = {}
-        if fname not in refmap[namespace]:
-            refmap[namespace][fname] = SortedDict()
-        refmap[namespace][fname][version_tuple] = f
+        # Store all versioned functions
+        ns = __kochen_f_refmap.setdefault(namespace, {})
+        fmap = ns.setdefault(fname, SortedDict())
+        fmap[version_tuple] = f
 
         # Cache latest compatible function
         if version_tuple <= __kochen_requested_version:
-            if namespace not in __kochen_f_cache:
-                __kochen_f_cache[namespace] = {}
-            if fname not in __kochen_f_cache[namespace]:
-                __kochen_f_cache[namespace][fname] = (f, version_tuple)
-
-            # Store only the compatible version
-            prev_version_tuple = __kochen_f_cache[namespace][fname][1]
-            if version_tuple > prev_version_tuple:
-                __kochen_f_cache[namespace][fname] = (f, version_tuple)
+            ns = __kochen_f_cache.setdefault(namespace, {})
+            _, prev_ver = ns.setdefault(fname, (f, version_tuple))
+            if version_tuple > prev_ver:
+                ns[fname] = (f, version_tuple)  # override with later
 
         return f
     return helper
@@ -343,6 +335,12 @@ def version(version_str: str, namespace: Optional[str] = None):
 # This assignment necessary to avoid conflicts with global 'version'
 # when submodules define it as well
 __kochen_version = version
+
+def mock_version(version_str, namespace=None):
+    """Replacement to quickly disable versioning."""
+    def helper(f):
+        return f
+    return helper
 
 def get_namespace_version(namespace):
     """Returns 'version' with a fixed namespace, for module-wide versioning."""
