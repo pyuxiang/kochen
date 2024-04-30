@@ -367,6 +367,8 @@ def cleanup(globals_ref, namespace=None):
     Note the 'globals_ref' needs to be passed because the scope of globals is restricted to the module within which it is defined, i.e. using 'globals()'
     within 'versioning.cleanup' will return the globals in 'versioning'.
     """
+    if globals_ref is None:
+        return
     if (ns := __kochen_f_refmap.get(namespace)) is None:
         return
     for fname in ns.keys():
@@ -375,9 +377,6 @@ def cleanup(globals_ref, namespace=None):
     return
 
 __kochen_cleanup = cleanup
-
-def get_namespace_cleanup(namespace):
-    return partial(__kochen_cleanup, namespace=namespace)
 
 def search(fname, namespace=None):
     """Returns latest compatible function."""
@@ -392,23 +391,24 @@ __kochen_search = search
 def get_namespace_search(namespace):
     return partial(__kochen_search, namespace=namespace)
 
-def get_namespace_versioning(namespace):
+def get_namespace_versioning(namespace, globals_ref=None):
     """Convenience function.
 
     Example:
 
         #!/usr/bin/env python3
         from kochen.versioning import get_namespace_versioning
-        version, cleanup, __getattr__ = get_namespace_versioning(__name__)
+        version, version_cleanup, __getattr__ = \
+            get_namespace_versioning(__name__, globals())
 
         @version("0.2024.1")
         def f(value):
             return value
 
-        cleanup(globals())
+        version_cleanup()
     """
     version = get_namespace_version(namespace)
-    cleanup = get_namespace_cleanup(namespace)
+    cleanup = partial(__kochen_cleanup, globals_ref, namespace=namespace)
     search = get_namespace_search(namespace)
     return version, cleanup, search
 
