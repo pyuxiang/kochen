@@ -55,6 +55,29 @@ Got some inspiration from the way the 'os' library was written, i.e. exposing th
 functions dynamically at compile time using the `__all__` mechanism.
 
 
+
+## Terminology
+
+    * 'requested_version':
+        Set by import line, which determines the minimum supported version.
+    * 'installed_version':
+        Determined by currently installed version.
+    * 'function_version':
+        Set by @version decorator.
+
+|            |    F <= I ?    |     F > I ?     |
+|------------|----------------|-----------------|
+| has F <= R |       OK       |    impossible   |
+| only F > R | update request |    impossible   |
+
+Note that F <= I is always true, since functions referenced in scripts will not
+have a version pinned. See if this is needed in the future.
+
+    * I == R: No issues
+    * I > R: Search for latest F < R (< I)
+    * I < R: Warn script user, then search for latest F < I (< R)
+
+
 Changelog:
     2023-12-01 Justin: Init design document
 
@@ -63,61 +86,46 @@ References:
 """
 
 import ast
+import importlib.metadata
 import re
 import sys
+from functools import partial
 from typing import Optional
 
-# Backward compatibility for importlib.metadata
-pyversion = f"{sys.version_info.major}.{sys.version_info.minor}"
-import importlib.metadata as imdata
+from sortedcontainers import SortedDict  # for O(logN) bisection methods
 
-# Dynamically retrieve library version information
-__version__ = imdata.version("boiler")
+from kochen.logging import get_logger
 
-_cache = {}
-def _version(version_str: str, namespace: Optional[str] = None):
-    def cacher(func):
+__all__ = [
+    "installed_version", "requested_version",  # library versioning
+    "version", "search", "get_namespace_versioning",  # function versioning
+]
 
-        # Cache function in loader for dynamic calls
-        if namespace not in _cache:
-            _cache[namespace] = {}
-        _cache[namespace][version_str] = func
-
-        # TODO(Justin): Remove this patch that ignores namespac
-        if version_str not in _cache:
-            _cache[version_str] = {}
-        _cache[version_str][func.__name__] = func
-
-        # Part of static compilation, might be needed for plain compile
-        # otherwise, 'common.test_function' will be assigned None.
-        # TODO(Justin): Check if necessary, perhaps for compatibility
-        #               with other libraries.
-        return func
-
-    # Assign namespace to local filename
-    if namespace is None:
-
-        # Retrieve only filename excl. extension,
-        # so as to avoid importing pathlib
-        _namespace = __file__
-        if "/" in _namespace:
-            _namespace = _namespace.split("/")[-1]
-        if "." in _namespace:
-            _namespace = _namespace[:_namespace.index(".")]
-        namespace = _namespace
-
-    return cacher
-
-def get_version(namespace):
-    return lambda version_str: _version(version_str, namespace)
+logger = get_logger(__name__, level="info")
 
 TARGET_LIBRARY = "kochen"
 MAX_IMPORTSEARCH_DEPTH = 3
 SEARCHED_MODULES = set()  # cache visited modules, since imports are also a DAG
-RE_VERSION_STRING = re.compile(r"#.*\sv([0-9]+)\.?([0-9]+)?")
+RE_VERSION_STRING = re.compile(r"#.*\sv([0-9]+)\.?([0-9]+)?\.?([0-9]+)?")
+
+def _version_str2tuple(version_str):
+    major, *remainder = version_str.split(".")
+    minor = patch = 0
+    if len(remainder) > 0:
+        minor = remainder[0]
+        if len(remainder) > 1:
+            patch = remainder[1]
+    return tuple(map(int, (major,minor,patch)))
+
+def _version_tuple2str(version_tuple):
+    return ".".join(map(str, version_tuple))
+
+# Dynamically retrieve library version information
+installed_version_str = importlib.metadata.version(TARGET_LIBRARY)
+installed_version = _version_str2tuple(installed_version_str)
 
 def _search_importline(path, depth=0, max_depth=MAX_IMPORTSEARCH_DEPTH):
-    """Search for first line reference to import of target library.
+    """Search for the line reference to import of target library.
 
     This code works by looking up currently imported modules of the root
     script, and performing a depth-first search. The presence of this line
@@ -210,39 +218,171 @@ def _search_importline(path, depth=0, max_depth=MAX_IMPORTSEARCH_DEPTH):
             if result is not None:
                 return result
 
+def _parse_importline(line, installed_version):
+    """Extracts requested version from the line."""
+    if "#" not in line or (result := RE_VERSION_STRING.search(line)) is None:
+        return installed_version
 
-try:
-    path_main = sys.modules["__main__"].__file__
-    name, path, lineno = _search_importline(path_main)
+    # Force lowest minor/patch for most conservative compatibility
+    major, minor, patch =  result.groups()
+    if minor is None: minor = 0
+    if patch is None: patch = 0
+    requested_version = tuple(map(int, (major,minor,patch)))
+    return requested_version
 
-    # Open file as writable
+
+# Execute the search for the import line
+def _get_requested_version():
+    """Returns the version requested by the import.
+
+    Works by starting the search from the main module run by the user,
+    and performing a depth-first search using '_search_importline'.
+
+    TODO:
+        Update file with the current library version.
+    """
+    try:
+        path_main = sys.modules["__main__"].__file__
+    except (KeyError, AttributeError):  # ignore interactive sessions
+        return installed_version
+
+    # Abandon if no import line was found (should not happen)
+    result = _search_importline(path_main)
+    if result is None:
+        print(f"'{TARGET_LIBRARY}' could not be found")
+        return installed_version
+
+    # Import line found: read from file
+    module_name, path, lineno = result
     with open(path, "r+") as file:
         lines = file.readlines()
         targetline = lines[lineno-1].rstrip("\n")
 
-        # Check for version string
-        VERSION_FOUND = False
-        if "#" in targetline:
-            result = RE_VERSION_STRING.search(targetline)
-            if result:
-                major, minor = result.groups()
-                if minor is None:
-                    minor = "0"  # force lowest version
-                version = f"{major}.{minor}"
-                print(
-                    f"'{TARGET_LIBRARY}' loaded (v{version}) "
-                    f"from {name}:{lineno}"
-                )
-                VERSION_FOUND = True
+    # Feedback to user importing results
+    requested_version = _parse_importline(targetline, installed_version)
+    requested_version_str = _version_tuple2str(requested_version)
+    if requested_version > installed_version:
+        logger.warn(
+            "Requested version is '%s', but '%s' is installed and will be loaded instead.",
+            requested_version_str, installed_version_str,
+        )
+        requested_version = installed_version
+        requested_version_str = _version_tuple2str(requested_version)
 
-        if not VERSION_FOUND:
-            version = __version__
-            major, minor, *_ = version.split(".")
-            version = f"{major}.{minor}"
-            print(
-                f"'{TARGET_LIBRARY}' loaded (latest:v{version}) "
-                f"from {name}:{lineno}"
-            )
+    logger.debug(
+        f"'{TARGET_LIBRARY}' loaded ("
+        f"{'current:' if requested_version == installed_version else ''}"
+        f"v{requested_version_str}) "
+        f"from {module_name}:{lineno}"
+    )
+    return requested_version
 
-except (KeyError, AttributeError):  # ignore interactive sessions
-    pass
+requested_version = _get_requested_version()
+__kochen_requested_version = requested_version
+del SEARCHED_MODULES  # clear space
+
+
+
+################
+#  VERSIONING  #
+################
+
+# Stores all function references
+# TODO: See how to reduce memory usage
+__kochen_f_cache = {}  # store latest compatible version on reference
+__kochen_f_refmap = {}
+
+def version(version_str: str, namespace: Optional[str] = None):
+    """Decorator for indicating version of a function.
+
+    When the function is first called, the function is cached within
+    a global cacher.
+
+    For internal use within the 'kochen' library only.
+
+    Example:
+        >>> from kochen.versioning import version
+        >>> @version("0.2024.1")
+        ... def f():
+        ...     return "hello world!"
+
+    TODO:
+        See how to extend this to other libraries.
+    """
+    # Convert to version tuple
+    version_tuple = _version_str2tuple(version_str)
+
+    def helper(f):
+        # Cache function in loader for dynamic calls
+        fname = f.__name__
+        refmap = __kochen_f_refmap
+
+        # Cache all versioned functions
+        if namespace not in refmap:
+            refmap[namespace] = {}
+        if fname not in refmap[namespace]:
+            refmap[namespace][fname] = SortedDict()
+        refmap[namespace][fname][version_tuple] = f
+
+        # Cache latest compatible function
+        if version_tuple <= __kochen_requested_version:
+            if namespace not in __kochen_f_cache:
+                __kochen_f_cache[namespace] = {}
+            if fname not in __kochen_f_cache[namespace]:
+                __kochen_f_cache[namespace][fname] = (f, version_tuple)
+
+            # Store only the compatible version
+            prev_version_tuple = __kochen_f_cache[namespace][fname][1]
+            if version_tuple > prev_version_tuple:
+                __kochen_f_cache[namespace][fname] = (f, version_tuple)
+
+        return f
+    return helper
+
+# Cache reference to 'version' internally within 'versioning.py'
+# This assignment necessary to avoid conflicts with global 'version'
+# when submodules define it as well
+__kochen_version = version
+
+def get_namespace_version(namespace):
+    """Returns 'version' with a fixed namespace, for module-wide versioning."""
+    return partial(__kochen_version, namespace=namespace)
+
+def search(fname, namespace=None):
+    """Returns latest compatible function."""
+    print(fname, namespace, __file__)
+    if (ns := __kochen_f_cache.get(namespace)) is None \
+            or (result := ns.get(fname)) is None:
+        raise AttributeError(f"'{fname}' is not versioned/does not exist.")
+    f, version_tuple = result
+    return f
+
+__kochen_search = search
+
+def get_namespace_search(namespace):
+    return partial(__kochen_search, namespace=namespace)
+
+def get_namespace_versioning(namespace):
+    """Convenience function."""
+    version = get_namespace_version(namespace)
+    search = get_namespace_search(namespace)
+    return version, search
+
+def search_versioned(fname, version, namespace=None):
+    """Returns desired function cached."""
+    # Check if function already cached
+    if fname in __kochen_f_cache:
+        return __kochen_f_cache[fname]
+
+    # Search for function
+    __kochen_f_refmap = []
+    if (ns := __kochen_f_refmap.get(namespace)) is None \
+            or (fmap := ns.get(fname)) is None:
+        raise AttributeError(f"'{fname}' is not versioned/does not exist.")
+
+    # TODO: Pull relevant version
+    # 'fmap' is effectively a set of version numbers
+    idx = fmap.bisect_right(version) - 1
+    found_version, f = fmap.peekitem(idx)
+    __kochen_f_cache[fname] = f
+    return f

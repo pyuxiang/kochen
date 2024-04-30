@@ -29,4 +29,4 @@ from kochen.v2 import pathutil
 # Trigger versioning process
 import kochen.versioning
 
-__version__ = kochen.versioning.__version__
+__version__ = kochen.versioning.installed_version
