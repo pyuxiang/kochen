@@ -28,6 +28,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest",
+  "build",
+  "twine",
+  "pkginfo",  # see: https://github.com/pypi/warehouse/issues/15611
 ]
 
 [build-system]
