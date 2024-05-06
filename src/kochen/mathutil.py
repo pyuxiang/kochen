@@ -4,6 +4,7 @@ import inspect
 import numpy as np
 import scipy
 import scipy.optimize
+import scipy.stats.sampling
 import uncertainties
 
 from kochen.versioning import get_namespace_versioning
@@ -533,8 +534,8 @@ def find(array, value=lambda x: x != 0):
 def rejection_sampling(f, samples=100, support=(0,1)):
     """Performs rejection sampling for a continuous distribution.
 
-    Note:
-        Consider using 'scipy.NumericalInversePolynomial' as an alternative.
+    Can be faster than scipy's scipy.NumericalInversePolynomial if
+    sampling < 10 million samples, and support is near optimal.
     """
     left, right = support
     assert left < right
@@ -562,5 +563,33 @@ def rejection_sampling(f, samples=100, support=(0,1)):
         sample_shortfall -= len(rs)
         acceptance_rate = len(rs)/sample_target
     return result[:samples]
+
+
+@version("0.2024.3")
+def rejection_sampling(f, samples=100, support=(0,1)):
+    """Performs rejection sampling for a continuous distribution.
+
+    Uses scipy's NumericalInversePolynomial to perform the sampling, which
+    is faster than the custom implementation in kochen:v0.2024.2 if sampling
+    large number of samples, or if an optimal support cannot be calculated
+    on the fly.
+    """
+    left, right = support
+    assert left < right
+
+    # Find maximum value
+    xs = np.linspace(left, right, 10001)
+    ys = f(xs)
+    assert (ys >= 0).all()  # check is a proper probability distribution
+    x0 = xs[np.argmax(ys)]  # generate a guess
+    xtol = (right - left) * 1e-5
+    fmax, = scipy.optimize.fmin(lambda x: -f(x), x0=x0, xtol=xtol, disp=0)
+
+    class Dist:
+        def pdf(self, x):
+            return f(x)
+
+    return scipy.stats.sampling.NumericalInversePolynomial(Dist(), center=fmax, domain=support).rvs(size=samples)
+
 
 version_cleanup()
