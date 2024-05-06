@@ -556,7 +556,7 @@ def rejection_sampling(f, samples=100, support=(0,1)):
 
         qs = np.random.uniform(left, right, sample_target)
         us = np.random.uniform(0, 1, sample_target)
-        rs = qs[us < f(qs)/fmax/1.01]
+        rs = qs[us < f(qs)/f(fmax)/1.01]
         result.extend(rs)
 
         sample_shortfall -= len(rs)
