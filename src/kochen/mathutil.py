@@ -6,6 +6,10 @@ import scipy
 import scipy.optimize
 import uncertainties
 
+from kochen.versioning import get_namespace_versioning
+version, version_cleanup, __getattr__ = \
+    get_namespace_versioning(__name__, globals())
+
 # Remember this adage:
 #   There is always some numpy function out there that will
 #   solve your data processing problem.
@@ -524,3 +528,39 @@ def find(array, value=lambda x: x != 0):
     else:
         return None
     return (i-1) + indices[0]
+
+@version("0.2024.2")
+def rejection_sampling(f, samples=100, support=(0,1)):
+    """Performs rejection sampling for a continuous distribution.
+
+    Note:
+        Consider using 'scipy.NumericalInversePolynomial' as an alternative.
+    """
+    left, right = support
+    assert left < right
+
+    # Find maximum value
+    xs = np.linspace(left, right, 10001)
+    ys = f(xs)
+    assert (ys >= 0).all()  # check is a proper probability distribution
+    x0 = xs[np.argmax(ys)]  # generate a guess
+    xtol = (right - left) * 1e-5
+    fmax, = scipy.optimize.fmin(lambda x: -f(x), x0=x0, xtol=xtol, disp=0)
+
+    # Use a default uniform distribution
+    result = []
+    sample_shortfall = samples
+    acceptance_rate = 1
+    while len(result) < samples:
+        sample_target = min(int(np.ceil(sample_shortfall/acceptance_rate * 1.2)), 1000000)
+
+        qs = np.random.uniform(left, right, sample_target)
+        us = np.random.uniform(0, 1, sample_target)
+        rs = qs[us < f(qs)/fmax/1.01]
+        result.extend(rs)
+
+        sample_shortfall -= len(rs)
+        acceptance_rate = len(rs)/sample_target
+    return result[:samples]
+
+version_cleanup()
