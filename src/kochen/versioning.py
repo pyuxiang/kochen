@@ -246,10 +246,17 @@ def _get_requested_version():
     except (KeyError, AttributeError):  # ignore interactive sessions
         return installed_version
 
-    # Abandon if no import line was found (should not happen)
-    result = _search_importline(path_main)
-    if result is None:
-        print(f"'{TARGET_LIBRARY}' could not be found")
+    # Abandon if no import line was found (can happen if the search depth
+    # is too shallow, in which case we try to search a bit deeper each time)
+    # We stop when we cannot find it with a depth of 3.
+    # TODO(2024-05-06):
+    #   Optimize this by ignoring known built-in and commonly-used libraries.
+    for max_depth in range(4):
+        result = _search_importline(path_main, max_depth=max_depth)
+        if result is not None:
+            break
+    else:
+        logger.warn(f"'{TARGET_LIBRARY}' could not be found")
         return installed_version
 
     # Import line found: read from file
@@ -259,20 +266,24 @@ def _get_requested_version():
         targetline = lines[lineno-1].rstrip("\n")
 
     # Feedback to user importing results
+    # The stated version number is used regardless, for use in editable
+    # package installations for testing new features (rather than
+    # falling back to the installed version).
     requested_version = _parse_importline(targetline, installed_version)
     requested_version_str = _version_tuple2str(requested_version)
     if requested_version > installed_version:
         logger.warn(
-            "Requested version is '%s', but '%s' is installed and will be loaded instead.",
+            "Requested version is '%s', but '%s' is installed.",
             requested_version_str, installed_version_str,
         )
-        requested_version = installed_version
-        requested_version_str = _version_tuple2str(requested_version)
 
+    currency = ""
+    if requested_version == installed_version:
+        currency = "current:"
+    elif requested_version > installed_version:
+        currency = "future:"
     logger.debug(
-        f"'{TARGET_LIBRARY}' loaded ("
-        f"{'current:' if requested_version == installed_version else ''}"
-        f"v{requested_version_str}) "
+        f"'{TARGET_LIBRARY}' loaded ({currency}v{requested_version_str}) "
         f"from {module_name}:{lineno}"
     )
     return requested_version
