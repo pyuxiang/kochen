@@ -54,10 +54,13 @@ def generate_default_parser(moduledoc):
     return parser
 
 
-def parse_args_or_help(parser):
+def parse_args_or_help(parser, ignore_unknown=False):
     """Boilerplate to parse arguments and print help if needed."""
     # Parse arguments - this must come before 'parser.get_source...'
-    args = parser.parse_args()
+    if ignore_unknown:
+        args, _ = parser.parse_known_args()
+    else:
+        args = parser.parse_args()
 
     # Check whether options have been supplied, and print help otherwise
     args_sources = parser.get_source_to_settings_dict().keys()
