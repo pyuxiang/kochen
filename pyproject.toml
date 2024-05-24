@@ -1,6 +1,6 @@
 [project]
 name = "kochen"
-version = "0.2024.3"
+version = "0.2024.4"
 description = "A compilation of boilerplate scribbles"
 readme = "README.md"
 requires-python = ">=3.8"

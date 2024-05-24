@@ -43,8 +43,9 @@ class ArgparseCustomFormatter(argparse.RawDescriptionHelpFormatter):
             return text[len(marker):].splitlines()
         return super()._split_lines(text, width)
 
-def generate_default_parser(moduledoc):
-    script_name = pathlib.Path(sys.argv[0]).name
+def generate_default_parser(moduledoc, script_name=None):
+    if script_name is None:
+        script_name = pathlib.Path(sys.argv[0]).name
     parser = configargparse.ArgumentParser(
         default_config_files=[f"{script_name}.default.conf"],
         description=parse_docstring_description(moduledoc),
