@@ -41,6 +41,9 @@ def main():
     src_dpath = pathlib.Path(__file__).parent / TEMPLATE_DIR
     src_fpath = src_dpath / f"{template_type}.py"
     if not src_fpath.exists():
+        template_names = [path.stem for path in src_dpath.glob("*.py")]
+        print(f"Template '{template_type}' not found, falling back to default.")
+        print(f"Available templates: {template_names}")
         src_fpath = src_dpath / f"{TEMPLATE_DEFAULT}.py"
     with open(src_fpath, "r") as f:
         filecontents = f.read()
