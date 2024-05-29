@@ -11,7 +11,6 @@ References:
 # Remove as needed
 import datetime as dt
 import itertools
-import logging
 import os
 import re
 import sys
@@ -29,7 +28,7 @@ from uncertainties import ufloat
 import kochen.scriptutil
 import kochen.logging
 
-logger = logging.getLogger(__name__)
+logger = kochen.logging.get_logger(__name__)
 
 def main():
     parser = kochen.scriptutil.generate_default_parser(__doc__)

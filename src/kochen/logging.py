@@ -114,7 +114,7 @@ class LoggingOverrideFormatter(logging.Formatter):
 
 def get_logger(name, level=None, human_readable=False):
     logger = logging.getLogger(name)
-    if not logger.handlers:
+    if level is not None and not logger.handlers:
         handler = logging.StreamHandler(stream=sys.stderr)
         handler.setFormatter(
             LoggingOverrideFormatter(
@@ -126,8 +126,7 @@ def get_logger(name, level=None, human_readable=False):
         )
         logger.addHandler(handler)
         logger.propagate = False
-
-    logger.setLevel(label2level(level))
+        logger.setLevel(label2level(level))
     return logger
 
 def verbosity2level(verbosity):
@@ -142,7 +141,7 @@ def label2level(label):
         "warning": logging.WARNING,
         "error": logging.ERROR,
     }
-    return LOG_LEVELS.get(label, logging.WARNING)
+    return LOG_LEVELS.get(label.lower(), logging.WARNING)
 
 def set_default_handlers(logger, stream=sys.stderr, file="", mode="w"):
     formatter = LoggingOverrideFormatter(fmt=_LOGGING_FMT, datefmt="%Y%m%d_%H%M%S", style="{")
