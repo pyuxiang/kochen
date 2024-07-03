@@ -6,6 +6,7 @@ import scipy
 import scipy.optimize
 import scipy.stats.sampling
 import uncertainties
+from uncertainties import unumpy as unp
 
 from kochen.versioning import get_namespace_versioning
 version, version_cleanup, __getattr__ = \
@@ -105,7 +106,8 @@ def bin(xx, yy: np.ndarray, start: float, end: float, n: int):
     # print(xs, ys)
     return list(xs)[:-1], ys
 
-def bin(xs, *yss, range=(0,1), bins=10, mode="lin"):
+@version("0.2024.5")
+def bin(xs, *yss, range=None, step=None, bins=10, mode="lin", return_stdev=False):
     """Perform smoothening by averaging over x-valued bins.
 
     Multi-argument 'yss' is specifically used so that binning can be done for
@@ -123,10 +125,24 @@ def bin(xs, *yss, range=(0,1), bins=10, mode="lin"):
         >>> rs = bin(xs, *ys, range=(0,6), bins=3)
         >>> np.all(np.array(rs) == [[0.5,2.5,4.5,6],[0.5,2.5,4.5,6],[5,25,45,60]])
         True
+
+        >>> xs, ys = bin(xs, ys, range=(1200-0.5, 1530+0.5), bins=331)  # TODO
     """
+    # Get range of values
+    xs = np.array(xs)
+    if range is not None:
+        start, end = range
+        mask = (xs >= start) & (xs < end)  # TODO: Check ending boundary
+        xs = xs[mask]
+        yss = [np.array(ys)[mask] for ys in yss]
+    else:
+        start, end = np.min(xs), np.max(xs)
+
+    # Steps take precedence and to convert to bins
+    if step is not None:
+        bins = get_bins(start, end, step, mode)
 
     # Calculate desired bins, noting the right constraint for binning extremes
-    start, end = range
     if mode == "lin":
         bs = np.linspace(start, end, bins+1)
     elif mode == "exp":
@@ -134,12 +150,32 @@ def bin(xs, *yss, range=(0,1), bins=10, mode="lin"):
     else:
         raise ValueError("'mode' should be one of {'lin', 'exp'}")
 
-    idxs = np.digitize(xs, bs) - 1
+    idxs = np.digitize(xs, bs) - 1  # guaranteed to be >= 1 if within bin boundaries
     inputs = [xs, *yss]
-    results = [np.bincount(idxs, weights=input, minlength=bins+1) for input in inputs]
-    sizes = [np.bincount(idxs, minlength=bins+1) for input in inputs]
+    results = [np.bincount(idxs, weights=input, minlength=bins) for input in inputs]
+    sizes = [np.bincount(idxs, minlength=bins) for input in inputs]
     results = [result/size for result, size in zip(results, sizes)]
+
+    if not return_stdev:
+        return results
+
+    # Calculate error as well
+    unique_idxs = np.arange(np.max(idxs)+1)
+    errs = [[] for _ in inputs]
+    for err, vs in zip(errs, inputs):
+        for i in unique_idxs:
+            err.append(np.std(vs, where=(idxs == i)))
+    results = [unp.uarray(a, b) for a, b in zip(results, errs)]
     return results
+
+def get_bins(start, stop, step, mode="lin"):
+    if mode == "lin":
+        num_bins = round((stop - start) / step) + 1
+    elif mode == "exp":  # start * step^n = stop
+        num_bins = np.log(stop/start) / np.log(step)  # TODO: Check off-by-1
+    else:
+        raise ValueError("mode should be one of {'lin','exp'}")
+    return num_bins
 
 def subsample(xs, *yss, range=(0,1), separation=1, mode="min"):
     """Perform subsampling.

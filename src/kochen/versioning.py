@@ -1,6 +1,30 @@
 #!/usr/bin/env python3
 """Performs versioning of kochen library files.
 
+## How to use it
+
+At the top of the script:
+
+```
+from kochen.versioning import get_namespace_versioning
+version, version_cleanup, __getattr__ = \
+    get_namespace_versioning(__name__, globals())
+```
+
+At relevant functions:
+
+```
+@version("0.2024.2")
+def ...
+```
+
+At end of the script:
+
+```
+version_cleanup()
+```
+
+
 
 ## How should versioning metadata be stored
 
