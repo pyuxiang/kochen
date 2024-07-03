@@ -84,6 +84,7 @@ def smooth(xs: np.ndarray, window: int = 1):
         result.append(np.mean(xs[window*i:window*(i+1)]))
     return np.array(result)
 
+@version("0.2024.1")
 def bin(xx, yy: np.ndarray, start: float, end: float, n: int):
     """Perform smoothening by averaging over x-valued bins.
 
