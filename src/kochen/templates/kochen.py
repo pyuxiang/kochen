@@ -31,38 +31,46 @@ import kochen.logging
 logger = kochen.logging.get_logger(__name__)
 
 def main():
-    parser = kochen.scriptutil.generate_default_parser(__doc__)
+    def make_parser(help_verbosity: int = 1):
+        adv = kochen.scriptutil.get_help_descriptor(help_verbosity >= 2)  # for basic customization
+        advv = kochen.scriptutil.get_help_descriptor(help_verbosity >= 3)  # for advanced customization
+        advvv = kochen.scriptutil.get_help_descriptor(help_verbosity >= 4)  # for internal testing
+        parser = kochen.scriptutil.generate_default_parser(__doc__, display_config=help_verbosity >= 2)
 
-    # Boilerplate
-    pgroup_config = parser.add_argument_group("display/configuration")
-    pgroup_config.add_argument(
-        "-h", "--help", action="store_true",
-        help="Show this help message and exit")
-    pgroup_config.add_argument(
-        "-v", "--verbosity", action="count", default=0,
-        help="Specify debug verbosity, e.g. -vv for more verbosity")
-    pgroup_config.add_argument(
-        "-L", "--logging", metavar="",
-        help="Log to file, if specified. Log level follows verbosity.")
-    pgroup_config.add_argument(
-        "--quiet", action="store_true",
-        help="Suppress errors, but will not block logging")
-    pgroup_config.add_argument(
-        "--config", metavar="", is_config_file_arg=True,
-        help="Path to configuration file")
-    pgroup_config.add_argument(
-        "--save", metavar="", is_write_out_config_file_arg=True,
-        help="Path to configuration file for saving, then immediately exit")
+        # Boilerplate
+        pgroup = parser.add_argument_group("display/configuration")
+        pgroup.add_argument(
+            "-h", "--help", action="count", default=0,
+            help="Show this help message, with incremental verbosity, e.g. -hh")
+        pgroup.add_argument(
+            "-v", "--verbosity", action="count", default=0,
+            help="Specify debug verbosity, e.g. -vv for more verbosity")
+        pgroup.add_argument(
+            "-L", "--logging", metavar="",
+            help=adv("Log to file, if specified. Log level follows verbosity."))
+        pgroup.add_argument(
+            "--quiet", action="store_true",
+            help=adv("Suppress errors, but will not block logging (default: False)"))
+        pgroup.add_argument(
+            "--config", metavar="", is_config_file_arg=True,
+            help=adv("Path to configuration file"))
+        pgroup.add_argument(
+            "--save", metavar="", is_write_out_config_file_arg=True,
+            help=adv("Path to configuration file for saving, then immediately exit"))
 
-    # Add more script arguments
-    # pgroup = parser.add_argument_group("")
-    # pgroup.add_argument(
-    #     "--ARG",
-    #     help="")
+        # Add more script arguments
+        # pgroup = parser.add_argument_group("")
+        # pgroup.add_argument(
+        #     "--ARG",
+        #     help="")
+        return parser
 
     # Parse arguments and configure logging
-    args = kochen.scriptutil.parse_args_or_help(parser)
-    kochen.logging.set_default_handlers(logger, file=args.logging)
+    parser = make_parser()
+    args = kochen.scriptutil.parse_args_or_help(parser, parser_func=make_parser)
+    kwargs = {}
+    if args.quiet: kwargs["stream"] = None
+    kochen.logging.set_default_handlers(logger, file=args.logging, **kwargs)
     kochen.logging.set_logging_level(logger, args.verbosity)
     logger.debug("%s", args)
 

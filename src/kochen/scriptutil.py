@@ -43,10 +43,11 @@ class ArgparseCustomFormatter(argparse.RawDescriptionHelpFormatter):
             return text[len(marker):].splitlines()
         return super()._split_lines(text, width)
 
-def generate_default_parser(moduledoc, script_name=None):
+def generate_default_parser(moduledoc, script_name=None, display_config=True):
     if script_name is None:
         script_name = pathlib.Path(sys.argv[0]).name
     parser = configargparse.ArgumentParser(
+        add_config_file_help=display_config,
         default_config_files=[f"{script_name}.default.conf"],
         description=parse_docstring_description(moduledoc),
         formatter_class=ArgparseCustomFormatter,
@@ -54,8 +55,28 @@ def generate_default_parser(moduledoc, script_name=None):
     )
     return parser
 
+def get_help_descriptor(display=False):
+    """Returns a descriptor that is suppressed if insufficient verbosity.
 
-def parse_args_or_help(parser, ignore_unknown=False):
+    Example:
+        >>> adv  = get_suppressed_help_descriptor(help_verbosity >= 2)
+        >>> advv = get_suppressed_help_descriptor(help_verbosity >= 3)
+        >>> parser.add_argument("-h", action="count", default=0)
+        >>> parser.add_argument("-a", help=adv("parameter a"))
+        >>> parser.add_argument("-b", help=advv("parameter b"))
+
+        user:~$ ./script -h    # shows help text for only parameter a
+        user:~$ ./script -hh   # shows help text for both parameters a and b
+
+    TODO:
+        Give this function a better name...
+    """
+    def advanced_help(description):
+        return description if display else configargparse.SUPPRESS
+    return advanced_help
+
+
+def parse_args_or_help(parser, ignore_unknown=False, parser_func=None):
     """Boilerplate to parse arguments and print help if needed."""
     # Parse arguments - this must come before 'parser.get_source...'
     if ignore_unknown:
@@ -66,8 +87,12 @@ def parse_args_or_help(parser, ignore_unknown=False):
     # Check whether options have been supplied, and print help otherwise
     args_sources = parser.get_source_to_settings_dict().keys()
     config_supplied = any(map(lambda x: x.startswith("config_file"), args_sources))
-    if getattr(args, "help", None) or \
-            (len(sys.argv) == 1 and not config_supplied):
+    if getattr(args, "help", 0) or (len(sys.argv) == 1 and not config_supplied):
+        if parser_func:
+            help_verbosity = 1
+            if hasattr(args, "help"):
+                help_verbosity = getattr(args, "help")
+            parser = parser_func(help_verbosity)
         parser.print_help(sys.stderr)
         sys.exit(1)
 
