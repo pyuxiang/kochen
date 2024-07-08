@@ -74,6 +74,9 @@ def main():
     kochen.logging.set_logging_level(logger, args.verbosity)
     logger.debug("%s", args)
 
+    # Optional
+    # args.path = kochen.scriptutil.parse_path(args.path, type="d")
+
     # Insert code here
     print("Hello world!")
 

@@ -142,3 +142,37 @@ def parse_docstring_description(docstring):
     d = re.sub(r"\n+", " ", d)
     d = re.sub(placeholder, "\n\n", d)
     return d
+
+def parse_path(path, type=None):
+    """Checks if path is of specified type, and returns wrapper to Path."""
+
+    assert type in (None, "f", "d", "p")  # file, directory, pipe
+    path = pathlib.Path(path)
+
+    # If no filetype specified
+    # Useful for when path is expected to exist, or when it
+    # doesn't make sense to create them, e.g. devices/sockets
+    if type is None:
+        if not path.exists():
+            raise ValueError(f"Path '{path}' does not exist")
+        return path
+
+    # Filetype has been specified -> check if type matches
+    if path.exists():
+        if type == "f" and not path.is_file():
+            raise ValueError(f"Path '{path}' is not a file")
+        if type == "d" and not path.is_dir():
+            raise ValueError(f"Path '{path}' is not a directory")
+        if type == "p" and not path.is_fifo():
+            raise ValueError(f"Path '{path}' is not a pipe")
+        return path
+
+    # Filetype specified but path does not exist -> create
+    if type == "f":
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+    elif type == "d":
+        path.mkdir(parents=True)
+    elif type == "p":
+        os.mkfifo(str(path))
+    return path
