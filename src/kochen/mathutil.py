@@ -280,7 +280,7 @@ def arange(start, stop, step):
     values = np.linspace(start, stop, round((stop-start)/step)+1)
     # Clean up of potential floating point errors
     dp = find_dp(step)
-    return np.array(list(map(lambda v: round(v, dp), values)))
+    return values.round(dp)
 
 def find_dp(n):
     """A more robust method of finding decimal place.
