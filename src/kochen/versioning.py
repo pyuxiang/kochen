@@ -193,7 +193,7 @@ def _search_importline(path, depth=0, max_depth=MAX_IMPORTSEARCH_DEPTH):
     try:
         with open(path) as file:
             root = ast.parse(file.read(), path)
-    except UnicodeDecodeError:  # ignore file if cannot decode properly
+    except (UnicodeDecodeError, FileNotFoundError):  # ignore file if cannot decode properly
         return
 
     for node in ast.walk(root):
