@@ -628,5 +628,19 @@ def rejection_sampling(f, samples=100, support=(0,1)):
 
     return scipy.stats.sampling.NumericalInversePolynomial(Dist(), center=fmax, domain=support).rvs(size=samples)
 
+def split_by_condition(vs, cond):
+    data = []
+    if len(vs) == 0:
+        return data
+
+    group = [vs[0]]
+    for i in range(1, len(vs)):
+        if cond(vs[i], vs[i-1]):
+            data.append(group)  # consolidate
+            group = [vs[i]]
+        else:
+            group.append(vs[i])
+    data.append(group)
+    return data
 
 version_cleanup()
