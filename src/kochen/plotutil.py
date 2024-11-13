@@ -362,3 +362,36 @@ def color_axis(ax, color, right=False):
     ax.spines["right" if right else "left"].set_color(color)
     ax.yaxis.label.set_color(color)
     ax.tick_params(axis='y', colors=color)
+
+# Annotations
+def add_annotations():
+    def hover(event):
+        vis = annot.get_visible()
+        if event.inaxes == ax:
+            cont, ind = sc.contains(event)
+            if cont:
+                update_annot(ind)
+                annot.set_visible(True)
+                fig.canvas.draw_idle()
+            else:
+                if vis:
+                    annot.set_visible(False)
+                    fig.canvas.draw_idle()
+    fig, ax = plt.subplots()
+    sc = plt.scatter(v, e, c=np.arange(len(e)), cmap=plt.get_cmap("viridis"))
+    annot = ax.annotate("", xy=(0,0), xytext=(20,20),textcoords="offset points",
+                        bbox=dict(boxstyle="round", fc="w"),
+                        arrowprops=dict(arrowstyle="->"))
+    annot.set_visible(False)
+    def update_annot(ind):
+        idx = ind["ind"]
+        pos = sc.get_offsets()[ind["ind"][0]]
+        annot.xy = pos
+        annot.set_text(", ".join(list(map(str, [
+            temp[idx],
+            hvolt[idx],
+            tvolt[idx],
+        ]))))
+        annot.get_bbox_patch().set_alpha(0.4)
+    fig.canvas.mpl_connect("motion_notify_event", hover)
+    plt.show()
