@@ -55,6 +55,31 @@ def generate_default_parser(moduledoc, script_name=None, display_config=True):
     )
     return parser
 
+def add_boilerplate_arguments(parser):
+    """
+    Adds '-hvL --quiet --config --save'.
+    """
+    pgroup_config = parser.add_argument_group("display/configuration")
+    pgroup_config.add_argument(
+        "-h", "--help", action="store_true",
+        help="Show this help message and exit")
+    pgroup_config.add_argument(
+        "-v", "--verbosity", action="count", default=0,
+        help="Specify debug verbosity, e.g. -vv for more verbosity")
+    pgroup_config.add_argument(
+        "-L", "--logging", metavar="",
+        help="Log to file, if specified. Log level follows verbosity.")
+    pgroup_config.add_argument(
+        "--quiet", action="store_true",
+        help="Suppress errors, but will not block logging")
+    pgroup_config.add_argument(
+        "--config", metavar="", is_config_file_arg=True,
+        help="Path to configuration file")
+    pgroup_config.add_argument(
+        "--save", metavar="", is_write_out_config_file_arg=True,
+        help="Path to configuration file for saving, then immediately exit")
+    return pgroup_config
+
 def get_help_descriptor(display=False):
     """Returns a descriptor that is suppressed if insufficient verbosity.
 
