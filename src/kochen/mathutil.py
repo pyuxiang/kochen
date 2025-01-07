@@ -643,4 +643,25 @@ def split_by_condition(vs, cond):
     data.append(group)
     return data
 
+def lmfit_patch():
+    """Add support for running guesses on CompositeModel, and adds a new Constant2dModel"""
+    import lmfit
+
+    def composite_guess(self, data, x, y, **kwargs):
+        p1 = self.left.guess(data, x, y, **kwargs)
+        p2 = self.right.guess(data, x, y, **kwargs)
+        return p1 + p2
+
+    lmfit.model.CompositeModel.guess = composite_guess
+
+    class Constant2dModel(lmfit.Model):
+        def __init__(self):
+            def constant(x, y, c=0.0):
+                return c * np.ones(np.shape(x))
+            super().__init__(constant, independent_vars=["x","y"])
+        def guess(self, data, x=None, y=None, **kwargs):
+            return self.make_params(c=np.mean(data))
+
+    lmfit.models.Constant2dModel = Constant2dModel
+
 version_cleanup()
