@@ -280,9 +280,16 @@ def _get_requested_version():
     TODO:
         Update file with the current library version.
     """
+    # For Python <3.13, the REPL script does not belong to any package
     try:
-        path_main = sys.modules["__main__"].__file__
+        main_module = sys.modules["__main__"]
+        path_main = main_module.__file__
     except (KeyError, AttributeError):  # ignore interactive sessions
+        return installed_version
+
+    # For Python >=3.13, the REPL is assigned to package '_pyrepl' and __file__
+    # is no longer unset.
+    if main_module.__package__ == "_pyrepl":
         return installed_version
 
     # Abandon if no import line was found (can happen if the search depth
@@ -291,6 +298,7 @@ def _get_requested_version():
     # TODO(2024-05-06):
     #   Optimize this by ignoring known built-in and commonly-used libraries.
     for max_depth in range(4):
+        SEARCHED_MODULES.clear()
         result = _search_importline(path_main, max_depth=max_depth)
         if result is not None:
             break
