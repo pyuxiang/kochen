@@ -1,30 +1,15 @@
 repos:
-  - repo: https://github.com/pycqa/isort
-    rev: 5.10.1
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.6.0
     hooks:
-      - id: isort
-        args: ["--profile", "black", "--filter-files"]
-        # https://pycqa.github.io/isort/docs/configuration/black_compatibility.html
-  - repo: https://github.com/python/black.git
-    rev: 22.10.0
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [feat, fix, perf, refactor, style, test, docs, build, chore, ci]
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.1
     hooks:
-      - id: black
-        language_version: python3
-  - repo: https://github.com/pycqa/flake8
-    # Python 3.7 support dropped in flake8 6.0.0
-    # https://flake8.pycqa.org/en/latest/release-notes/5.0.4.html
-    rev: 5.0.4
-    hooks:
-      - id: flake8
-        language_version: python3
-        args: ["--max-line-length", "88",
-               "--extend-ignore", "E203",
-               "--exclude", ".venv,.git,__pycache__,.mypy_cache"]
-        # https://black.readthedocs.io/en/stable/guides/using_black_with_other_tools.html
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v0.991
-    hooks:
-      - id: mypy
-        language_version: python3
-        args: ["--ignore-missing-imports"]
-        # https://stackoverflow.com/a/68665742
+      - id: ruff
+        stages: [pre-commit]
+        args: [ --fix ]
+      - id: ruff-format
+        stages: [pre-commit]
