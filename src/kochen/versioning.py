@@ -124,8 +124,11 @@ from sortedcontainers import SortedDict  # for O(logN) bisection methods
 from kochen.logging import get_logger
 
 __all__ = [
-    "installed_version", "requested_version",  # library versioning
-    "version", "search", "get_namespace_versioning",  # function versioning
+    "installed_version",
+    "requested_version",  # library versioning
+    "version",
+    "search",
+    "get_namespace_versioning",  # function versioning
 ]
 
 logger = get_logger(__name__, level="info")
@@ -135,6 +138,7 @@ MAX_IMPORTSEARCH_DEPTH = 3
 SEARCHED_MODULES = set()  # cache visited modules, since imports are also a DAG
 RE_VERSION_STRING = re.compile(r"#.*\sv([0-9]+)\.?([0-9]+)?\.?([0-9]+)?")
 
+
 def _version_str2tuple(version_str):
     major, *remainder = version_str.split(".")
     minor = patch = 0
@@ -142,14 +146,17 @@ def _version_str2tuple(version_str):
         minor = remainder[0]
         if len(remainder) > 1:
             patch = remainder[1]
-    return tuple(map(int, (major,minor,patch)))
+    return tuple(map(int, (major, minor, patch)))
+
 
 def _version_tuple2str(version_tuple):
     return ".".join(map(str, version_tuple))
 
+
 # Dynamically retrieve library version information
 installed_version_str = importlib.metadata.version(TARGET_LIBRARY)
 installed_version = _version_str2tuple(installed_version_str)
+
 
 def _search_importline(path, depth=0, max_depth=MAX_IMPORTSEARCH_DEPTH):
     """Search for the line reference to import of target library.
@@ -193,11 +200,13 @@ def _search_importline(path, depth=0, max_depth=MAX_IMPORTSEARCH_DEPTH):
     try:
         with open(path) as file:
             root = ast.parse(file.read(), path)
-    except (UnicodeDecodeError, FileNotFoundError):  # ignore file if cannot decode properly
+    except (
+        UnicodeDecodeError,
+        FileNotFoundError,
+    ):  # ignore file if cannot decode properly
         return
 
     for node in ast.walk(root):
-
         # Process node only if they are import statements
         if isinstance(node, ast.Import):
             module = None
@@ -222,7 +231,7 @@ def _search_importline(path, depth=0, max_depth=MAX_IMPORTSEARCH_DEPTH):
                 lineno = node.lineno  # 1-indexed
                 with open(path) as file:
                     lines = file.readlines()
-                while lines[lineno-1].endswith("\\\n"):
+                while lines[lineno - 1].endswith("\\\n"):
                     lineno += 1
                 return name, path, lineno
 
@@ -241,9 +250,10 @@ def _search_importline(path, depth=0, max_depth=MAX_IMPORTSEARCH_DEPTH):
                 continue
 
             # Continue traversal and terminate immediately upon completion
-            result = _search_importline(target, depth+1, max_depth)
+            result = _search_importline(target, depth + 1, max_depth)
             if result is not None:
                 return result
+
 
 def _parse_importline(line, installed_version):
     """Extracts requested version from the line."""
@@ -251,10 +261,12 @@ def _parse_importline(line, installed_version):
         return installed_version
 
     # Force lowest minor/patch for most conservative compatibility
-    major, minor, patch =  result.groups()
-    if minor is None: minor = 0
-    if patch is None: patch = 0
-    requested_version = tuple(map(int, (major,minor,patch)))
+    major, minor, patch = result.groups()
+    if minor is None:
+        minor = 0
+    if patch is None:
+        patch = 0
+    requested_version = tuple(map(int, (major, minor, patch)))
     return requested_version
 
 
@@ -290,7 +302,7 @@ def _get_requested_version():
     module_name, path, lineno = result
     with open(path, "r+") as file:
         lines = file.readlines()
-        targetline = lines[lineno-1].rstrip("\n")
+        targetline = lines[lineno - 1].rstrip("\n")
 
     # Feedback to user importing results
     # The stated version number is used regardless, for use in editable
@@ -301,7 +313,8 @@ def _get_requested_version():
     if requested_version > installed_version:
         logger.warn(
             "Requested version is '%s', but '%s' is installed.",
-            requested_version_str, installed_version_str,
+            requested_version_str,
+            installed_version_str,
         )
 
     currency = ""
@@ -315,10 +328,9 @@ def _get_requested_version():
     )
     return requested_version
 
+
 requested_version = _get_requested_version()
 __kochen_requested_version = requested_version
-del SEARCHED_MODULES  # clear space
-
 
 
 ################
@@ -330,6 +342,7 @@ del SEARCHED_MODULES  # clear space
 __kochen_f_cache = {}  # store latest compatible version on reference
 __kochen_f_refmap = {}
 
+
 def version(version_str: str, namespace: Optional[str] = None):
     """Decorator for indicating version of a function.
 
@@ -337,6 +350,7 @@ def version(version_str: str, namespace: Optional[str] = None):
     a global cacher.
 
     For internal use within the 'kochen' library only.
+
 
     Example:
         >>> from kochen.versioning import version
@@ -367,22 +381,29 @@ def version(version_str: str, namespace: Optional[str] = None):
                 ns[fname] = (f, version_tuple)  # override with later
 
         return f
+
     return helper
+
 
 # Cache reference to 'version' internally within 'versioning.py'
 # This assignment necessary to avoid conflicts with global 'version'
 # when submodules define it as well
 __kochen_version = version
 
+
 def mock_version(version_str, namespace=None):
     """Replacement to quickly disable versioning."""
+
     def helper(f):
         return f
+
     return helper
+
 
 def get_namespace_version(namespace):
     """Returns 'version' with a fixed namespace, for module-wide versioning."""
     return partial(__kochen_version, namespace=namespace)
+
 
 def cleanup(globals_ref, namespace=None):
     """Clears function references from namespace.
@@ -412,20 +433,26 @@ def cleanup(globals_ref, namespace=None):
             globals_ref.pop(fname)
     return
 
+
 __kochen_cleanup = cleanup
+
 
 def search(fname, namespace=None):
     """Returns latest compatible function."""
-    if (ns := __kochen_f_cache.get(namespace)) is None \
-            or (result := ns.get(fname)) is None:
+    if (ns := __kochen_f_cache.get(namespace)) is None or (
+        result := ns.get(fname)
+    ) is None:
         raise AttributeError(f"'{fname}' is not versioned/does not exist.")
     f, version_tuple = result
     return f
 
+
 __kochen_search = search
+
 
 def get_namespace_search(namespace):
     return partial(__kochen_search, namespace=namespace)
+
 
 def get_namespace_versioning(namespace, globals_ref=None):
     """Convenience function.
@@ -448,6 +475,7 @@ def get_namespace_versioning(namespace, globals_ref=None):
     search = get_namespace_search(namespace)
     return version, cleanup, search
 
+
 def search_versioned(fname, version, namespace=None):
     """Returns desired function cached."""
     # Check if function already cached
@@ -456,8 +484,9 @@ def search_versioned(fname, version, namespace=None):
 
     # Search for function
     __kochen_f_refmap = []
-    if (ns := __kochen_f_refmap.get(namespace)) is None \
-            or (fmap := ns.get(fname)) is None:
+    if (ns := __kochen_f_refmap.get(namespace)) is None or (
+        fmap := ns.get(fname)
+    ) is None:
         raise AttributeError(f"'{fname}' is not versioned/does not exist.")
 
     # TODO: Pull relevant version
