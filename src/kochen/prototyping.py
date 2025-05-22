@@ -7,16 +7,34 @@
 # Example:
 #     >>> from kochen.prototyping import *
 
+# Ignore unused imports + module import location
+# ruff: noqa: F401, E402
+
 import importlib.util
 import sys
 import warnings
 
+
+class Profile:
+    def __init__(self, title="profile"):
+        self.title = title
+
+    def __enter__(self, *args, **kwargs):
+        self.start = time.time()
+
+    def __exit__(self, *args, **kwargs):
+        print(f"{self.title}:", time.time() - self.start)
+
+
 class BlackHole:
     """Eats attribute calls, as an alternative to clean up."""
+
     def __init__(self, module):
         self.module = module
+
     def __getattribute__(self, name: str):
         return
+
 
 def lazy_import(name):
     with warnings.catch_warnings():
@@ -34,6 +52,7 @@ def lazy_import(name):
     loader.exec_module(module)
     return module
 
+
 def cleanup(globals):
     scheduled = []
     for k, v in globals.items():
@@ -41,6 +60,7 @@ def cleanup(globals):
             scheduled.append(k)
     for k in scheduled:
         del globals[k]
+
 
 # Built-in libraries are generally fine
 import datetime as dt
