@@ -1,16 +1,12 @@
-import functools
-import inspect
-
 import numpy as np
 import scipy
 import scipy.optimize
 import scipy.stats.sampling
-import uncertainties
 from uncertainties import unumpy as unp
 
 from kochen.versioning import get_namespace_versioning
-version, version_cleanup, __getattr__ = \
-    get_namespace_versioning(__name__, globals())
+
+version, version_cleanup, __getattr__ = get_namespace_versioning(__name__, globals())
 
 # Remember this adage:
 #   There is always some numpy function out there that will
@@ -19,7 +15,6 @@ version, version_cleanup, __getattr__ = \
 # ... at this point, I feel it would be well-served to document
 # what functions would be used in numpy, then try to write a
 # wrapper over them. In other words, stop reinventing the wheel!
-
 
 
 def merge(a, b):
@@ -31,9 +26,10 @@ def merge(a, b):
         >>> tuple(merge(a, b))
         ([(2,4)], [(2,3)])
     """
-    _, aidx, bidx = np.intersect1d(a[:,0], b[:,0], assume_unique=True, return_indices=True)
+    _, aidx, bidx = np.intersect1d(
+        a[:, 0], b[:, 0], assume_unique=True, return_indices=True
+    )
     return a[aidx], b[bidx]
-
 
 
 # Linear interpolation
@@ -47,6 +43,7 @@ def lininterp(new_xs, old_xs, old_ys):
         >>> new_ys = lininterp(new_xs, xs, ys)
     """
     return np.interp(new_xs, old_xs, old_ys)
+
 
 # Cubic interpolation
 def cubicinterp(new_xs, old_xs, old_ys):
@@ -80,9 +77,10 @@ def smooth(xs: np.ndarray, window: int = 1):
         >>> ys = smooth(ys, window=20)  # same window for consistency with xs
     """
     result = []
-    for i in range(xs.size//window):
-        result.append(np.mean(xs[window*i:window*(i+1)]))
+    for i in range(xs.size // window):
+        result.append(np.mean(xs[window * i : window * (i + 1)]))
     return np.array(result)
+
 
 @version("0.2024.1")
 def bin(xx, yy: np.ndarray, start: float, end: float, n: int):
@@ -100,12 +98,14 @@ def bin(xx, yy: np.ndarray, start: float, end: float, n: int):
     xs = np.linspace(start, end, n)
     ys = []
     for i in range(1, xs.size):
-        s = xs[i-1]; e = xs[i]
+        s = xs[i - 1]
+        e = xs[i]
         _ = [y for i, y in enumerate(yy) if s <= xx[i] < e]
         ys.append(np.mean(_))
-    xs += (xs[1]-xs[0])/2  # put in center of bin
+    xs += (xs[1] - xs[0]) / 2  # put in center of bin
     # print(xs, ys)
     return list(xs)[:-1], ys
+
 
 @version("0.2024.5")
 def bin(xs, *yss, range=None, step=None, bins=10, mode="lin", return_stdev=False):
@@ -145,9 +145,9 @@ def bin(xs, *yss, range=None, step=None, bins=10, mode="lin", return_stdev=False
 
     # Calculate desired bins, noting the right constraint for binning extremes
     if mode == "lin":
-        bs = np.linspace(start, end, bins+1)
+        bs = np.linspace(start, end, bins + 1)
     elif mode == "exp":
-        bs = np.geomspace(start, end, bins+1)
+        bs = np.geomspace(start, end, bins + 1)
     else:
         raise ValueError("'mode' should be one of {'lin', 'exp'}")
 
@@ -155,13 +155,13 @@ def bin(xs, *yss, range=None, step=None, bins=10, mode="lin", return_stdev=False
     inputs = [xs, *yss]
     results = [np.bincount(idxs, weights=input, minlength=bins) for input in inputs]
     sizes = [np.bincount(idxs, minlength=bins) for input in inputs]
-    results = [result/size for result, size in zip(results, sizes)]
+    results = [result / size for result, size in zip(results, sizes)]
 
     if not return_stdev:
         return results
 
     # Calculate error as well
-    unique_idxs = np.arange(np.max(idxs)+1)
+    unique_idxs = np.arange(np.max(idxs) + 1)
     errs = [[] for _ in inputs]
     for err, vs in zip(errs, inputs):
         for i in unique_idxs:
@@ -169,16 +169,18 @@ def bin(xs, *yss, range=None, step=None, bins=10, mode="lin", return_stdev=False
     results = [unp.uarray(a, b) for a, b in zip(results, errs)]
     return results
 
+
 def get_bins(start, stop, step, mode="lin"):
     if mode == "lin":
         num_bins = round((stop - start) / step) + 1
     elif mode == "exp":  # start * step^n = stop
-        num_bins = np.log(stop/start) / np.log(step)  # TODO: Check off-by-1
+        num_bins = np.log(stop / start) / np.log(step)  # TODO: Check off-by-1
     else:
         raise ValueError("mode should be one of {'lin','exp'}")
     return num_bins
 
-def subsample(xs, *yss, range=(0,1), separation=1, mode="min"):
+
+def subsample(xs, *yss, range=(0, 1), separation=1, mode="min"):
     """Perform subsampling.
 
     Examples:
@@ -191,7 +193,8 @@ def subsample(xs, *yss, range=(0,1), separation=1, mode="min"):
     if mode == "min":
         # Construct choice by minimum
         idxs = np.zeros(len(xs)).astype(bool)
-        prev_idx = 0; idxs[0] = True
+        prev_idx = 0
+        idxs[0] = True
         for curr_idx, x in enumerate(xs):
             if (x - xs[prev_idx]) < separation:
                 continue
@@ -205,7 +208,6 @@ def subsample(xs, *yss, range=(0,1), separation=1, mode="min"):
         raise ValueError("'mode' should be one of {'min', 'step'}")
 
     return [np.array(xs)[idxs], *[np.array(ys)[idxs] for ys in yss]]
-
 
 
 def pairfilter(pred, *xs):
@@ -234,6 +236,7 @@ def pairfilter(pred, *xs):
     data = list(zip(*xs))  # group individual data points
     return list(zip(*[x for (*x,) in data if pred(*x)]))
 
+
 def manual_integration(ts, xs):
     """
 
@@ -241,11 +244,12 @@ def manual_integration(ts, xs):
         Riemann summation for discrete integration. Dynamic programming.
     """
     width = ts[1] - ts[0]
-    xs = [(x*width) for x in xs]  # update values to area
+    xs = [(x * width) for x in xs]  # update values to area
     integral = [xs[0]]  # boundary condition
     for i in range(1, len(xs)):
         integral.append(integral[-1] + xs[i])
     return integral
+
 
 def manual_derivative(xs, ys):
     """
@@ -259,9 +263,10 @@ def manual_derivative(xs, ys):
     """
     derivatives = []
     for i in range(1, len(ys)):
-        derivatives.append((ys[i]-ys[i-1])/(xs[i]-xs[i-1]))
+        derivatives.append((ys[i] - ys[i - 1]) / (xs[i] - xs[i - 1]))
     xs = xs[1:]
     return xs, derivatives
+
 
 def arange(start, stop, step):
     """Alternative to np.arange with endpoint as default.
@@ -277,10 +282,11 @@ def arange(start, stop, step):
         >>> arange(0, 100, 0.1) != np.arange(0, 100, 0.1)
         ... #        yields floating-point errors --/^
     """
-    values = np.linspace(start, stop, round((stop-start)/step)+1)
+    values = np.linspace(start, stop, round((stop - start) / step) + 1)
     # Clean up of potential floating point errors
     dp = find_dp(step)
     return values.round(dp)
+
 
 def find_dp(n):
     """A more robust method of finding decimal place.
@@ -297,6 +303,7 @@ def find_dp(n):
         if diff < 1e-12:
             break
     return precision
+
 
 def gc_product(*args, repeat=1):
     """Gray-code equivalent of Cartesian product 'itertools.product'.
@@ -332,10 +339,14 @@ def gc_product(*args, repeat=1):
     pools = [tuple(pool) for pool in args] * repeat
     result = [[]]
     for pool in pools:
-        result = [x+[y] for i, x in enumerate(result) for y in (
-            reversed(pool) if i % 2 else pool)]
+        result = [
+            x + [y]
+            for i, x in enumerate(result)
+            for y in (reversed(pool) if i % 2 else pool)
+        ]
     for prod in result:
         yield tuple(prod)
+
 
 def lrgc_product(*args):
     """Long-run Gray code variant of Cartesian product.
@@ -361,18 +372,12 @@ def lrgc_product(*args):
     """
     raise NotImplementedError("n-bit balanced Gray code not implemented.")
 
-    # WIP...
-    if len(args) > 8:
-        raise NotImplementedError("Gray codes for more than 8 sequences currently not implemented.")
 
-    pools = [tuple(pool) for pool in args]
-    sequence = _get_lrgc_sequence(len(args))
-    pass
-
+# fmt: off
 
 def _get_lrgc_sequence(num_bits):
     """Cached LRGC sequences, to avoid bloating memory."""
-    assert 1 <= num_bits <= 8 and type(num_bits) == int
+    assert 1 <= num_bits <= 8 and isinstance(num_bits, int)
     if num_bits == 1:
         return (0,)
     if num_bits == 2:
@@ -390,36 +395,12 @@ def _get_lrgc_sequence(num_bits):
     if num_bits == 8:
         return (0,32,33,97,99,103,71,79,95,223,221,253,249,241,177,176,178,146,130,2,10,14,46,44,60,124,116,84,85,87,215,211,219,251,235,171,169,173,141,133,132,4,6,38,54,62,126,122,120,88,72,200,192,193,225,227,231,167,175,143,159,157,29,25,17,49,48,112,114,98,66,74,78,206,204,236,252,244,180,181,183,151,147,19,27,11,43,41,45,109,101,69,68,70,198,214,222,254,250,186,184,168,136,128,129,1,3,35,39,47,111,127,125,93,89,217,209,208,240,242,226,162,170,138,142,140,12,28,20,52,53,117,119,115,83,91,75,203,201,233,237,229,165,164,166,134,150,22,30,26,58,56,40,104,96,64,65,67,195,199,207,239,255,191,189,185,153,145,144,16,18,50,34,42,106,110,108,76,92,220,212,213,245,247,243,179,187,155,139,137,9,13,5,37,36,100,102,118,86,94,90,218,216,248,232,224,160,161,163,131,135,7,15,31,63,61,57,121,113,81,80,82,210,194,202,234,238,174,172,188,156,148,149,21,23,55,51,59,123,107,105,73,77,205,197,196,228,230,246,182,190,158,154,152,24,8)
 
-def gaussian(x, A, μ, σ):
-    """Evaluates the Gaussian function."""
-    return A * np.exp(-(x-μ)**2/(2.*σ**2))
+# fmt: on
 
-def gaussian_bg(x, A, μ, σ, bg):
-    """Evaluates the Gaussian function with non-zero background."""
-    return A * np.exp(-(x-μ)**2/(2.*σ**2)) + bg
 
-def gaussian_pdf(x, μ, σ):
-    """Evaluates the Gaussian PDF."""
-    A = 1/(σ * np.sqrt(2 * np.pi))
-    return gaussian(x, A, μ, σ)
-
-def fit(f, xs, ys, errors: bool = False, labels: bool = False, *args, **kwargs):
-    popt, pcov = scipy.optimize.curve_fit(f, xs, ys, *args, **kwargs)
-    if not errors and not labels:
-        return popt  # defaults to standard
-
-    perr = np.sqrt(np.diag(pcov))
-    pvals = [uncertainties.ufloat(*p) for p in zip(popt, perr)]
-    argnames = list(inspect.signature(f).parameters.keys())[1:]
-    pretty_pvals = [str(pval).split("+/-") for pval in pvals]
-    plabels = [f"{a} = {v} ± {u}" for a, (v,u) in zip(argnames, pretty_pvals)]  # {:P} for pretty-print alternative
-
-    ret = pvals if errors else popt
-    if labels:
-        return ret, plabels
-    return ret
-
-def histogram(a, bins=10, range=None, symmetric: bool = False, endpoint: bool = False, **kwargs):
+def histogram(
+    a, bins=10, range=None, symmetric: bool = False, endpoint: bool = False, **kwargs
+):
     """Convenience for slight adjustments to 'np.histogram'.
 
     Mitigates a couple of small bugs, e.g. `np.histogram([0,1,2], bins=2, range=(0,2))`
@@ -480,12 +461,13 @@ def histogram(a, bins=10, range=None, symmetric: bool = False, endpoint: bool = 
         right -= width / 2
 
     # Extend range to avoid right-exclusive error
-    ys, xs = np.histogram(a, bins=bins+1, range=(left,right+extend), **kwargs)
+    ys, xs = np.histogram(a, bins=bins + 1, range=(left, right + extend), **kwargs)
 
     # Return results
     if not symmetric:
         return ys[:-1], xs[:-2]
     return ys[:-1], (xs[1:-1] + xs[:-2]) / 2
+
 
 def kth_min(a, k=1):
     """Returns least-k (1-indexed) values of array.
@@ -521,12 +503,13 @@ def kth_min(a, k=1):
         raise ValueError(f"Out-of-bounds indices: '{k}'")
 
     # Change positive integers from 1- to 0-indexed
-    k = [(v-1 if v > 0 else v) for v in k]
+    k = [(v - 1 if v > 0 else v) for v in k]
 
     # Perform partitioning and return
     if return_as_int:
         k = np.array(k[0])
     return np.partition(a, k)[k]
+
 
 def kth_max(a, k=1):
     """Inverse of kth_min, to return max values instead.
@@ -534,6 +517,7 @@ def kth_max(a, k=1):
     Uses 'kth_min' internally. See documentation for 'kth_min'.
     """
     return kth_min(a, -np.array(k))
+
 
 def find(array, value=lambda x: x != 0):
     """Returns index of first occurrence of value or condition.
@@ -559,16 +543,17 @@ def find(array, value=lambda x: x != 0):
     op = value if callable(value) else lambda x: x == value
     i = 1
     while i < len(array):
-        indices = np.where(op(array[i-1 : 2*i-1]))[0]
+        indices = np.where(op(array[i - 1 : 2 * i - 1]))[0]
         if len(indices) > 0:
             break
         i <<= 1
     else:
         return None
-    return (i-1) + indices[0]
+    return (i - 1) + indices[0]
+
 
 @version("0.2024.2")
-def rejection_sampling(f, samples=100, support=(0,1)):
+def rejection_sampling(f, samples=100, support=(0, 1)):
     """Performs rejection sampling for a continuous distribution.
 
     Can be faster than scipy's scipy.NumericalInversePolynomial if
@@ -583,27 +568,29 @@ def rejection_sampling(f, samples=100, support=(0,1)):
     assert (ys >= 0).all()  # check is a proper probability distribution
     x0 = xs[np.argmax(ys)]  # generate a guess
     xtol = (right - left) * 1e-5
-    fmax, = scipy.optimize.fmin(lambda x: -f(x), x0=x0, xtol=xtol, disp=0)
+    (fmax,) = scipy.optimize.fmin(lambda x: -f(x), x0=x0, xtol=xtol, disp=0)
 
     # Use a default uniform distribution
     result = []
     sample_shortfall = samples
     acceptance_rate = 1
     while len(result) < samples:
-        sample_target = min(int(np.ceil(sample_shortfall/acceptance_rate * 1.2)), 1000000)
+        sample_target = min(
+            int(np.ceil(sample_shortfall / acceptance_rate * 1.2)), 1000000
+        )
 
         qs = np.random.uniform(left, right, sample_target)
         us = np.random.uniform(0, 1, sample_target)
-        rs = qs[us < f(qs)/f(fmax)/1.01]
+        rs = qs[us < f(qs) / f(fmax) / 1.01]
         result.extend(rs)
 
         sample_shortfall -= len(rs)
-        acceptance_rate = len(rs)/sample_target
+        acceptance_rate = len(rs) / sample_target
     return result[:samples]
 
 
 @version("0.2024.3")
-def rejection_sampling(f, samples=100, support=(0,1)):
+def rejection_sampling(f, samples=100, support=(0, 1)):
     """Performs rejection sampling for a continuous distribution.
 
     Uses scipy's NumericalInversePolynomial to perform the sampling, which
@@ -620,13 +607,16 @@ def rejection_sampling(f, samples=100, support=(0,1)):
     assert (ys >= 0).all()  # check is a proper probability distribution
     x0 = xs[np.argmax(ys)]  # generate a guess
     xtol = (right - left) * 1e-5
-    fmax, = scipy.optimize.fmin(lambda x: -f(x), x0=x0, xtol=xtol, disp=0)
+    (fmax,) = scipy.optimize.fmin(lambda x: -f(x), x0=x0, xtol=xtol, disp=0)
 
     class Dist:
         def pdf(self, x):
             return f(x)
 
-    return scipy.stats.sampling.NumericalInversePolynomial(Dist(), center=fmax, domain=support).rvs(size=samples)
+    return scipy.stats.sampling.NumericalInversePolynomial(
+        Dist(), center=fmax, domain=support
+    ).rvs(size=samples)
+
 
 def split_by_condition(vs, cond):
     data = []
@@ -635,7 +625,7 @@ def split_by_condition(vs, cond):
 
     group = [vs[0]]
     for i in range(1, len(vs)):
-        if cond(vs[i], vs[i-1]):
+        if cond(vs[i], vs[i - 1]):
             data.append(group)  # consolidate
             group = [vs[i]]
         else:
@@ -643,25 +633,5 @@ def split_by_condition(vs, cond):
     data.append(group)
     return data
 
-def lmfit_patch():
-    """Add support for running guesses on CompositeModel, and adds a new Constant2dModel"""
-    import lmfit
-
-    def composite_guess(self, data, x, y, **kwargs):
-        p1 = self.left.guess(data, x, y, **kwargs)
-        p2 = self.right.guess(data, x, y, **kwargs)
-        return p1 + p2
-
-    lmfit.model.CompositeModel.guess = composite_guess
-
-    class Constant2dModel(lmfit.Model):
-        def __init__(self):
-            def constant(x, y, c=0.0):
-                return c * np.ones(np.shape(x))
-            super().__init__(constant, independent_vars=["x","y"])
-        def guess(self, data, x=None, y=None, **kwargs):
-            return self.make_params(c=np.mean(data))
-
-    lmfit.models.Constant2dModel = Constant2dModel
 
 version_cleanup()
