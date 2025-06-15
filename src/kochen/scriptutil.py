@@ -55,6 +55,19 @@ def generate_default_parser(moduledoc, script_name=None, display_config=True):
     )
     return parser
 
+def generate_default_parser_config(moduledoc, script_name=None, display_config=True):
+    if script_name is None:
+        script_name = pathlib.Path(sys.argv[0]).name
+    default_config = f"{script_name}.default.conf"
+    parser = configargparse.ArgumentParser(
+        add_config_file_help=display_config,
+        default_config_files=[default_config],
+        description=parse_docstring_description(moduledoc),
+        formatter_class=ArgparseCustomFormatter,
+        add_help=False,
+    )
+    return parser, default_config
+
 def add_boilerplate_arguments(parser):
     """
     Adds '-hvL --quiet --config --save'.
