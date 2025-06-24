@@ -267,8 +267,10 @@ def filecache(f=None, *, path=None, reload: bool = False, backend: str = "pickle
         @functools.wraps(f)
         def cacher(*args, **kwargs):
             fname = f.__name__
-            key = (args, frozenset(kwargs.items()))
             table = defaultdict(dict)
+            key = (args, frozenset(kwargs.items()))
+            if backend == "json":
+                key = str(key)
 
             try:
                 if backend == "pickle":
@@ -304,15 +306,16 @@ def filecache(f=None, *, path=None, reload: bool = False, backend: str = "pickle
 
         return cacher
 
+    if backend not in ("pickle", "json"):
+        raise ValueError(f"Unrecognized backend '{backend}'")
+
     if path is None:
         if len(sys.argv) == 0:
             raise ValueError(
                 "Script name could not be determined - please supply 'path' argument."
             )
-        path = pathlib.Path(sys.argv[0]).name + ".cache"
-
-    if backend not in ("pickle", "json"):
-        raise ValueError(f"Unrecognized backend '{backend}'")
+        suffix = ".cache.json" if backend == "json" else ".cache"
+        path = pathlib.Path(sys.argv[0]).name + suffix
 
     if f is not None:  # function was directly passed
         return wrapper(f)
