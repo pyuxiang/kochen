@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # Justin, 2022-12-20
-"""Provides helper functions for data management.
-"""
+"""Provides helper functions for data management."""
 
 __all__ = ["pprint", "read_log"]
 
@@ -16,12 +15,13 @@ import tqdm
 # For pprint to accept NaN values
 NOVALUE = np.iinfo(np.int64).min
 
+
 def pprint(
-        *values,
-        width: int = 7,
-        out: Optional[str] = None,
-        pbar: Optional[Type[tqdm.tqdm]] = None,
-        stdout: bool = True,
+    *values,
+    width: int = 7,
+    out: Optional[str] = None,
+    pbar: Optional[Type[tqdm.tqdm]] = None,
+    stdout: bool = True,
 ):
     """Prints right-aligned columns of fixed width.
 
@@ -46,7 +46,7 @@ def pprint(
         Conflicts with Python's pprint module, which is implemented
         for pretty-printing of data structures instead of plain tabular data.
     """
-    array = [(str(value) if value != NOVALUE else ' ') for value in values]
+    array = [(str(value) if value != NOVALUE else " ") for value in values]
 
     # Checks if progress bar is supplied - if so, update that instead
     if pbar:
@@ -65,6 +65,7 @@ def pprint(
             f.write(line)
 
     return
+
 
 def pprint_progressbar(value, lower=0, upper=1, width=80):
     """Prints multi-level progress bar for single valued representation.
@@ -88,25 +89,25 @@ def pprint_progressbar(value, lower=0, upper=1, width=80):
     lefts = [0]
     for bound in bounds:
         lower, upper = bound
-        percent = (value-lower)/(upper-lower)
+        percent = (value - lower) / (upper - lower)
         percent = max(0, min(1, percent))
-        left = int(round(percent*(width-7)))
+        left = int(round(percent * (width - 7)))
         lefts.append(left)
-    lefts.append(width-7)
+    lefts.append(width - 7)
 
     # Print blocks
     blocks = [
-        u"\u2588",
-        u"\u2593",
-        u"\u2592",
-        u"\u2591",
+        "\u2588",
+        "\u2593",
+        "\u2592",
+        "\u2591",
         " ",
     ]
-    line = u"{:6.4f}\u2595".format(round(value, 4))
+    line = "{:6.4f}\u2595".format(round(value, 4))
     for i in range(1, len(lefts)):
-        amt = max(0, min(width-7, lefts[i] - lefts[i-1]))
-        line += blocks[i-1] * amt
-    line += u"\u258f"
+        amt = max(0, min(width - 7, lefts[i] - lefts[i - 1]))
+        line += blocks[i - 1] * amt
+    line += "\u258f"
     print(line)
 
 
@@ -144,7 +145,7 @@ def read_log(filename: str, schema: list, merge: bool = False):
 
     convert_time_day_overflow = 0  # allow time conversions to cycle into the next day
     convert_time_prevtime = dt.datetime(1900, 1, 1, 0, 0, 0)
-    convert_time = lambda s: dt.datetime.strptime(s, "%H%M%S")  # default date is 1 Jan 1900
+
     def convert_time(s):
         nonlocal convert_time_prevtime
         nonlocal convert_time_day_overflow
@@ -154,7 +155,9 @@ def read_log(filename: str, schema: list, merge: bool = False):
         convert_time_prevtime = result
         result += dt.timedelta(days=convert_time_day_overflow)
         return result
-    convert_datetime = lambda s: dt.datetime.strptime(s, "%Y%m%d_%H%M%S")
+
+    def convert_datetime(s):
+        return dt.datetime.strptime(s, "%Y%m%d_%H%M%S")
 
     # Parse schema
     _maps = []
@@ -190,7 +193,7 @@ def read_log(filename: str, schema: list, merge: bool = False):
                 # Note this cannot be run in parallel due to 'convert_time' implementation
                 row = [f(v) for f, v in zip(_maps, row) if f is not None]
                 _data.append(row)
-            except:
+            except:  # noqa: E722
                 # If fails, assume is string header
                 if not is_header_logged:
                     _headers = [v for f, v in zip(_maps, row) if f is not None]
@@ -204,9 +207,14 @@ def read_log(filename: str, schema: list, merge: bool = False):
     _items = tuple(zip(_headers, _data))
     return dict(_items)
 
+
 class DataEncoder(json.JSONEncoder):
     """Usage: json.dump(..., cls=data_encoder)"""
-    _DT2STR = lambda x: x.strftime("%Y%m%d_%H%M%S.%f")
+
+    @staticmethod
+    def _dt2str(x):
+        return x.strftime("%Y%m%d_%H%M%S.%f")
+
     def default(self, obj):
         if isinstance(obj, dt.datetime):
             return {"_dt": obj.strftime("%Y%m%d_%H%M%S.%f")}
@@ -217,9 +225,13 @@ class DataEncoder(json.JSONEncoder):
                 return {"_np": obj.tolist()}
         return super().default(obj)
 
+
 def data_decoder(dct):
     """Usage: json.load(..., object_hook=datetime_decoder)"""
-    _str2dt = lambda x: dt.datetime.strptime(x, "%Y%m%d_%H%M%S.%f")
+
+    def _str2dt(x):
+        return dt.datetime.strptime(x, "%Y%m%d_%H%M%S.%f")
+
     if "_dt" in dct:
         return _str2dt(dct["_dt"])
     if "_np" in dct:
@@ -227,24 +239,3 @@ def data_decoder(dct):
     if "_dt_np" in dct:
         return np.array(list(map(_str2dt, dct["_dt_np"])))
     return dct
-
-def filecache(func):
-    # TODO: Raise warning if 'cache' keyword already defined.
-    def helper(*args, cache=None, **kwargs):
-        nonlocal func
-        try:
-            with open(cache, "r") as f:
-                result = json.load(f, object_hook=data_decoder)
-            return result
-
-        except:
-            print("Cache loading failed")
-        result = func(*args, **kwargs)
-        with open(cache, "w") as f:
-            json.dump(result, f, cls=DataEncoder)
-        return result
-    return helper
-
-@filecache
-def loader():
-    raise NotImplementedError()
