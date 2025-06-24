@@ -5,8 +5,13 @@
 __all__ = ["pprint", "read_log"]
 
 import datetime as dt
+import functools
 import json
+import pathlib
+import pickle
 import re
+import sys
+from collections import defaultdict
 from typing import Optional, Type
 
 import numpy as np
@@ -239,3 +244,102 @@ def data_decoder(dct):
     if "_dt_np" in dct:
         return np.array(list(map(_str2dt, dct["_dt_np"])))
     return dct
+
+
+def filecache(f=None, *, path=None, reload: bool = False, backend: str = "pickle"):
+    """
+    Args:
+        f: Function to enable caching for.
+        path: Path to cache.
+        reload: Whether to ignore existing + load new values into cache.
+        backend: Backend cache format, one of {"pickle", "json"}.
+
+    Examples:
+        >>> @filecache
+        ... def f(x):
+        ...     return x**2
+        >>> @filecache(path="hey", reload=True)
+        ... def g(x):
+        ...     return x**3
+    """
+
+    def wrapper(f):
+        @functools.wraps(f)
+        def cacher(*args, **kwargs):
+            fname = f.__name__
+            key = (args, frozenset(kwargs.items()))
+            table = defaultdict(dict)
+
+            try:
+                if backend == "pickle":
+                    with open(path, "rb") as cache:
+                        _table = pickle.load(cache)
+                elif backend == "json":
+                    with open(path, "r") as cache:
+                        _table = json.load(cache, object_hook=data_decoder)
+                else:
+                    raise RuntimeError()
+
+                # Try to read data
+                if isinstance(_table, dict):
+                    table = _table
+                    if not reload and fname in table and key in table[fname]:
+                        return table[fname][key]
+            except:  # noqa: E722
+                pass
+
+            # Evaluate and cache result
+            result = f(*args, **kwargs)
+            table[fname][key] = result
+            if backend == "pickle":
+                with open(path, "wb") as cache:
+                    pickle.dump(table, cache)
+            elif backend == "json":
+                with open(path, "w") as cache:
+                    json.dump(table, cache, cls=DataEncoder)
+            else:
+                raise RuntimeError()
+
+            return result
+
+        return cacher
+
+    if path is None:
+        if len(sys.argv) == 0:
+            raise ValueError(
+                "Script name could not be determined - please supply 'path' argument."
+            )
+        path = pathlib.Path(sys.argv[0]).name + ".cache"
+
+    if backend not in ("pickle", "json"):
+        raise ValueError(f"Unrecognized backend '{backend}'")
+
+    if f is not None:  # function was directly passed
+        return wrapper(f)
+    return wrapper
+
+
+def get_datetime_parser(format):
+    def parse_datetime(v):
+        """
+        Examples:
+            >>> dtype = {
+            ...     "names": ("timestamp", "value"),
+            ...     "formats": ("datetime64[ns]", "i16"),
+            ... }
+            >>> np.loadtxt(
+            ...     filename,
+            ...     dtype=dtype,
+            ...     convertors={0: get_datetime_parser(FMT_DATE_SECONDS)},
+            ... )
+        """
+        return np.datetime64(dt.datetime.strptime(v, format))
+
+    return parse_datetime
+
+
+FMT_DATE_DAY = "%Y%m%d"
+FMT_TIME_SECONDS = "%H%M%S"
+FMT_DATE_SECONDS = f"{FMT_DATE_DAY}_{FMT_TIME_SECONDS}"
+FMT_TIME_MICROSECONDS = f"{FMT_TIME_SECONDS}.%f"
+FMT_DATE_MICROSECONDS = f"{FMT_DATE_DAY}_{FMT_TIME_MICROSECONDS}"
