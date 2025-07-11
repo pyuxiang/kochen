@@ -6,16 +6,14 @@ import sys
 
 import configargparse
 
+
 # https://stackoverflow.com/a/23941599
 class ArgparseCustomFormatter(argparse.RawDescriptionHelpFormatter):
-
     RAW_INDICATOR = "rawtext|"
 
     def _format_action_invocation(self, action):
         if not action.option_strings:
-            _ = self._metavar_formatter(action, action.dest)(1)
-            print(action, _)
-            metavar, = _
+            (metavar,) = self._metavar_formatter(action, action.dest)(1)
             return metavar
         else:
             parts = []
@@ -32,16 +30,17 @@ class ArgparseCustomFormatter(argparse.RawDescriptionHelpFormatter):
                 default = action.dest.upper()
                 args_string = self._format_args(action, default)
                 for option_string in action.option_strings:
-                    #parts.append('%s %s' % (option_string, args_string))
-                    parts.append('%s' % option_string)
-                parts[-1] += ' %s'%args_string
-            return ', '.join(parts)
+                    # parts.append('%s %s' % (option_string, args_string))
+                    parts.append("%s" % option_string)
+                parts[-1] += " %s" % args_string
+            return ", ".join(parts)
 
     def _split_lines(self, text, width):
         marker = ArgparseCustomFormatter.RAW_INDICATOR
         if text.startswith(marker):
-            return text[len(marker):].splitlines()
+            return text[len(marker) :].splitlines()
         return super()._split_lines(text, width)
+
 
 def generate_default_parser(moduledoc, script_name=None, display_config=True):
     if script_name is None:
@@ -54,6 +53,7 @@ def generate_default_parser(moduledoc, script_name=None, display_config=True):
         add_help=False,
     )
     return parser
+
 
 def generate_default_parser_config(moduledoc, script_name=None, display_config=True):
     if script_name is None:
@@ -68,30 +68,47 @@ def generate_default_parser_config(moduledoc, script_name=None, display_config=T
     )
     return parser, default_config
 
+
 def add_boilerplate_arguments(parser):
     """
     Adds '-hvL --quiet --config --save'.
     """
     pgroup_config = parser.add_argument_group("display/configuration")
     pgroup_config.add_argument(
-        "-h", "--help", action="store_true",
-        help="Show this help message and exit")
+        "-h", "--help", action="store_true", help="Show this help message and exit"
+    )
     pgroup_config.add_argument(
-        "-v", "--verbosity", action="count", default=0,
-        help="Specify debug verbosity, e.g. -vv for more verbosity")
+        "-v",
+        "--verbosity",
+        action="count",
+        default=0,
+        help="Specify debug verbosity, e.g. -vv for more verbosity",
+    )
     pgroup_config.add_argument(
-        "-L", "--logging", metavar="",
-        help="Log to file, if specified. Log level follows verbosity.")
+        "-L",
+        "--logging",
+        metavar="",
+        help="Log to file, if specified. Log level follows verbosity.",
+    )
     pgroup_config.add_argument(
-        "--quiet", action="store_true",
-        help="Suppress errors, but will not block logging")
+        "--quiet",
+        action="store_true",
+        help="Suppress errors, but will not block logging",
+    )
     pgroup_config.add_argument(
-        "--config", metavar="", is_config_file_arg=True,
-        help="Path to configuration file")
+        "--config",
+        metavar="",
+        is_config_file_arg=True,
+        help="Path to configuration file",
+    )
     pgroup_config.add_argument(
-        "--save", metavar="", is_write_out_config_file_arg=True,
-        help="Path to configuration file for saving, then immediately exit")
+        "--save",
+        metavar="",
+        is_write_out_config_file_arg=True,
+        help="Path to configuration file for saving, then immediately exit",
+    )
     return pgroup_config
+
 
 def get_help_descriptor(display=False):
     """Returns a descriptor that is suppressed if insufficient verbosity.
@@ -109,8 +126,10 @@ def get_help_descriptor(display=False):
     TODO:
         Give this function a better name...
     """
+
     def advanced_help(description):
         return description if display else configargparse.SUPPRESS
+
     return advanced_help
 
 
@@ -135,6 +154,7 @@ def parse_args_or_help(parser, ignore_unknown=False, parser_func=None):
         sys.exit(1)
 
     return args
+
 
 def guarantee_path(path, type=None):
     """Checks if path is of specified type, and returns wrapper to Path."""
@@ -170,6 +190,7 @@ def guarantee_path(path, type=None):
         os.mkfifo(str(path))
     return path
 
+
 def parse_docstring_description(docstring):
     placeholder = "~~~PLACEHOLDER~~~"
     # Remove all changelog information
@@ -180,6 +201,7 @@ def parse_docstring_description(docstring):
     d = re.sub(r"\n+", " ", d)
     d = re.sub(placeholder, "\n\n", d)
     return d
+
 
 def parse_path(path, type=None):
     """Checks if path is of specified type, and returns wrapper to Path."""
