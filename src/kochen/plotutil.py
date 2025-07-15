@@ -194,7 +194,8 @@ def assign_dynamic_timescale(ax):
         ax.xaxis.set_major_locator(fixedloc)
 
         # Trickle down units to calculate time offset
-        remainder = xticks[0]
+        minabs_xtick = np.min(np.abs(xticks))
+        remainder = minabs_xtick
         _hours =  _mins =  _secs = 0
         if label == "ms":
             _secs = int(remainder // 1000)
@@ -223,7 +224,7 @@ def assign_dynamic_timescale(ax):
         ax.set_xlabel(xlabel)
 
         # Set xlabels and xticklabels
-        xticks -= (xticks[0] - remainder)  # apply offset
+        xticks -= (minabs_xtick - remainder)  # apply offset
         xticklabels = np.round(xticks, 6)  # clean rounding errors
         if all([v.is_integer() for v in xticklabels]):
             xticklabels = np.int32(xticklabels)  # clean integers
