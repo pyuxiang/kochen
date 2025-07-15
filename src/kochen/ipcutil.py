@@ -136,6 +136,7 @@ class Server:
             func = self.registered_calls.get(command, None)
             if func is None:
                 logger.info("Command '%s' does not exist.", command)
+                connection.send(f"Invalid command: '{command}'")
                 continue
 
             if is_help:
@@ -148,6 +149,7 @@ class Server:
                     connection.send(result)
             except Exception as e:
                 logger.info("Function threw error: %s", e)
+                connection.send(f"Error: '{e}'")
 
     def register(self, name_or_func, func=None) -> bool:
         # Extract name via function inspection
@@ -177,23 +179,27 @@ class Server:
 
     def help(self):
         """Prints client usage help."""
+        aux_calls = ["help", "healthcheck", "close"]
+        calls = list(map(str, self.registered_calls.keys()))
+        calls = sorted(k for k in calls if k not in aux_calls)
         ip = get_ip_address()
         text = [
             f"Address: {self.address}:{self.port}",
-            f"Registered calls: {set(self.registered_calls.keys())}",
+            f"Registered calls: {calls}",
+            f"Auxiliary calls: {aux_calls}",
             "",
             ">>> from kochen.ipcutil import Client",
             f">>> c = Client('{ip}', port={self.port})",
-            ">>> c.call('help', ...)",
-            ">>> result = c.call('healthcheck')",
-            "",
+            ">>> c.healthcheck()",
         ]
+        if len(calls) > 0:
+            text.append(f">>> c.help('{calls[0]}')")
         if self.secret is not None:
             secret = self.secret.decode()  # convert back from bytes
             text[0] += f" (secret: {secret})"
-            text[4] = text[4][:-1] + f", secret='{secret}')"
+            text[5] = text[5][:-1] + f", secret='{secret}')"
 
-        print("\n".join(text))
+        print("\n".join(text + [""]))
 
 
 class Client:
@@ -256,3 +262,10 @@ class Client:
     def receive(self, blocking=True):
         if self.connect():
             return self.read(blocking)
+
+    def __getattr__(self, name):
+        # Try to ping server for response
+        def f(*args, **kwargs):
+            return self.call(name, *args, **kwargs)
+
+        return f
