@@ -12,6 +12,7 @@ Changelog:
 """
 
 import logging
+import socket
 from multiprocessing.connection import Listener, Client as _Client
 
 # Set up logging facilities if not available
@@ -19,16 +20,37 @@ _LOGGING_FMT = "{asctime}\t{levelname:<7s}\t{funcName}:{lineno}\t| {message}"
 logging.basicConfig(level=logging.DEBUG, format=_LOGGING_FMT, style="{")
 logger = logging.getLogger(__name__)
 
+
 def convert_to_bytes(secret):
     if secret is not None and not isinstance(secret, bytes):
         secret = str(secret).encode()
     return secret
 
+
 HEALTHCHECK_OK = "200"
 
 
-class ServerUnavailable(OSError): pass
-class ServerClosed(OSError): pass
+def get_ip_address():
+    # Copied from <https://stackoverflow.com/a/28950776>
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(0)
+    try:
+        s.connect(("10.254.254.254", 1))  # does not need to be reachable
+        ip = s.getsockname()[0]
+    except:  # noqa: E722
+        ip = "127.0.0.1"
+    finally:
+        s.close()
+    return ip
+
+
+class ServerUnavailable(OSError):
+    pass
+
+
+class ServerClosed(OSError):
+    pass
+
 
 class Server:
     """A simple server class to open ports and assign function calls.
@@ -53,13 +75,15 @@ class Server:
 
     def __init__(self, address="0.0.0.0", port=7378, secret=None):
         secret = convert_to_bytes(secret)
+        if address is None or address == "*":
+            address = "0.0.0.0"  # aliases for all addresses
         self.address = address
         self.port = port
         self.secret = secret
         self.restart = True
         self.registered_calls = {
-            "close": None,  # special message
             "healthcheck": None,
+            "close": None,  # special message
         }
 
     def run(self):
@@ -93,6 +117,7 @@ class Server:
             # Process message
             command, args, kwargs = message
             command = command.lower()
+            is_help = False
             if command == "close":
                 self.restart = False
                 connection.close()
@@ -101,10 +126,20 @@ class Server:
             if command == "healthcheck":
                 connection.send(HEALTHCHECK_OK)
                 continue
+            if command == "help":
+                is_help = True
+                if len(args) == 0:
+                    logger.info("No command provided to help.")
+                    continue
+                command = args[0]
 
             func = self.registered_calls.get(command, None)
             if func is None:
                 logger.info("Command '%s' does not exist.", command)
+                continue
+
+            if is_help:
+                connection.send(func.__doc__)
                 continue
 
             try:
@@ -139,6 +174,27 @@ class Server:
         if name not in self.registered_calls:
             logger.error("Function '%s' not registered.", name)
         del self.registered_calls[name]
+
+    def help(self):
+        """Prints client usage help."""
+        ip = get_ip_address()
+        text = [
+            f"Address: {self.address}:{self.port}",
+            f"Registered calls: {set(self.registered_calls.keys())}",
+            "",
+            ">>> from kochen.ipcutil import Client",
+            f">>> c = Client('{ip}', port={self.port})",
+            ">>> c.call('help', ...)",
+            ">>> result = c.call('healthcheck')",
+            "",
+        ]
+        if self.secret is not None:
+            secret = self.secret.decode()  # convert back from bytes
+            text[0] += f" (secret: {secret})"
+            text[4] = text[4][:-1] + f", secret='{secret}')"
+
+        print("\n".join(text))
+
 
 class Client:
     """Only way to check if really down is to send a message."""
