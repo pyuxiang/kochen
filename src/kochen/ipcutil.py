@@ -11,8 +11,10 @@ Changelog:
     2024-02-20, Justin: Generalize.
 """
 
+import inspect
 import logging
 import socket
+import warnings
 from multiprocessing.connection import Listener, Client as _Client
 
 # Set up logging facilities if not available
@@ -202,7 +204,7 @@ class Server:
         print("\n".join(text + [""]))
 
 
-class Client:
+class ClientInternal:
     """Only way to check if really down is to send a message."""
 
     def __init__(self, address="localhost", port=7378, secret=None):
@@ -264,8 +266,102 @@ class Client:
             return self.read(blocking)
 
     def __getattr__(self, name):
-        # Try to ping server for response
         def f(*args, **kwargs):
-            return self.call(name, *args, **kwargs)
+            return self.call(name, *args, **kwargs)  # defer to remote server
 
         return f
+
+
+class Client:
+    """A simple client class to communicate with servers hosting devices.
+
+    Args:
+        address: IPv4 address of remote server
+        port: Listen port of remote server
+        secret: Symmetric key for optional encryption
+        devices: List of device classes for introspection (see below)
+
+    Examples:
+
+        # Create a client to communicate with the remote server
+        >>> client = Client("localhost", port=3000)
+        >>> client
+        Client(localhost:3000, devices=[])
+        >>> client.get_voltage()  # if server defines 'get_voltage()'
+        1.000
+
+        # Clients can be optionally supplied with device classes, which allow
+        # for additional introspection
+        >>> pm = Client("localhost", port=3000, devices=[Powermeter])
+        >>> pm
+        Client(localhost:3000, devices=[Powermeter])
+        >>> pm.get_voltage
+        <function Powermeter.get_voltage>
+        >>> help(pm.get_voltage)
+        get_voltage(self, size=20)
+            ...
+        >>> pm.get_voltage()
+        1.000
+
+    Note:
+        This is a higher-level client that wraps the internal '_Client' class,
+        for two main purposes:
+
+            1. Accepts a set of device classes, whose methods can be exposed by
+               'dir(Client(...))' and inspected using 'help', as if it were a
+               local instance of the class.
+
+            2. It hides the internal abstraction of '_Client', but its methods
+               can still be called as fallback.
+
+        Currently TypeError is not emitted if kwargs not existent. To fix this.
+    """
+
+    def __init__(self, address="localhost", port=7378, secret=None, devices=()):
+        self.__client = ClientInternal(address, port, secret)
+        self.__devices = devices
+        for device in devices:
+            self.__load_device_methods(device)
+
+    def __load_device_methods(self, device):
+        """
+        Note:
+            We want to expose the internal methods, so that it looks functionally
+            the same as the original class this client wrapper is shadowing, which
+            allows users to inspect it using the usual 'dir' methods. This means
+            just storing a table of signatures from 'inspect.signature(method)' is
+            not a complete solution.
+
+            Since only hidden methods (i.e. starting with "__") are defined for this
+            class, there is no concern of shadowing.
+        """
+        namedmethods = inspect.getmembers(device, predicate=inspect.isfunction)
+        for name, method in namedmethods:
+            if name.startswith("__"):
+                continue  # no point forwarding magic methods
+
+            # Warn if new method will shadow previously implemented methods
+            if name in vars(Client):
+                warnings.warn(f"'{name}' was reimplemented by '{device.__name__}'.")
+
+            # Create an internal function with closure
+            def create_f(name):
+                def f(*args, **kwargs):
+                    return getattr(self.__client, name)(*args, **kwargs)
+
+                f.__signature__ = inspect.signature(method)
+                f.__doc__ = inspect.getdoc(method)
+                f.__name__ = name
+                f.__qualname__ = f"{device.__name__}.{name}"
+                return f
+
+            setattr(self, name, create_f(name))
+
+    def __repr__(self):
+        names = [device.__name__ for device in self.__devices]
+        pretty_names = f"[{', '.join(names)}]"
+        address = f"{self.__client.address}:{self.__client.port}"
+        return f"{type(self).__name__}({address}, devices={pretty_names})"
+
+    def __getattr__(self, name):
+        return getattr(self.__client, name)  # defer to internal client
