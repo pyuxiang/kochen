@@ -14,22 +14,21 @@ Changelog:
 import inspect
 import logging
 import socket
+import sys
 import warnings
 from multiprocessing.connection import Listener, Client as _Client
 
 # Set up logging facilities if not available
-_LOGGING_FMT = "{asctime}\t{levelname:<7s}\t{funcName}:{lineno}\t| {message}"
-logging.basicConfig(level=logging.DEBUG, format=_LOGGING_FMT, style="{")
 logger = logging.getLogger(__name__)
+
+HEALTHCHECK_OK = 200
+DEFAULT_PORT = 4440
 
 
 def convert_to_bytes(secret):
     if secret is not None and not isinstance(secret, bytes):
         secret = str(secret).encode()
     return secret
-
-
-HEALTHCHECK_OK = "200"
 
 
 def get_ip_address():
@@ -46,19 +45,24 @@ def get_ip_address():
     return ip
 
 
-class ServerUnavailable(OSError):
-    pass
+def parse_ip_address(address):
+    """
+    Raises:
+        ValueError: Invalid IP address.
+    """
+    if address is None or address == "*":
+        return "0.0.0.0"
+    if address == "localhost":
+        return "127.0.0.1"
+    return address
 
 
-class ServerClosed(OSError):
-    pass
+class ServerInternal:
+    """See documentation for 'Server' instead.
 
-
-class Server:
-    """A simple server class to open ports and assign function calls.
-
-    The nice feature about multiprocessing.connection is the use of
-    pickle-encoding, so almost arbitrary Python objects can be transmitted.
+    Notes:
+        The nice feature about multiprocessing.connection is the use of
+        pickle-encoding, so almost arbitrary Python objects can be transmitted.
 
     Examples:
         # Server-side
@@ -75,25 +79,33 @@ class Server:
         >>> c.call("close")
     """
 
-    def __init__(self, address="0.0.0.0", port=7378, secret=None):
-        secret = convert_to_bytes(secret)
-        if address is None or address == "*":
-            address = "0.0.0.0"  # aliases for all addresses
-        self.address = address
+    def __init__(self, address: str = "*", port: int = DEFAULT_PORT, secret=None):
+        self.address = parse_ip_address(address)
         self.port = port
-        self.secret = secret
+        self.secret = convert_to_bytes(secret)
         self.restart = True
-        self.registered_calls = {
+        self.registered_calls = {}
+        self.auxiliary_calls = {
+            "help": None,
             "healthcheck": None,
             "close": None,  # special message
         }
 
-    def run(self):
+        # Configure root logger if no handler provided downstream, for ease of use
+        # TODO: Check if the logging setup logic is correct.
+        if not logger.hasHandlers():
+            _LOGGING_FMT = (
+                "{asctime}\t{levelname:<7s}\t{funcName}:{lineno}\t| {message}"
+            )
+            logging.basicConfig(level=logging.DEBUG, format=_LOGGING_FMT, style="{")
+
+    def run(self, print_usage: bool = True) -> None:
+        self.print_usage()
         try:
             self.restart = True
             while self.restart:
                 self.listener = Listener((self.address, self.port), authkey=self.secret)
-                logger.debug("Server listening...")
+                logger.info("Server listening...")
                 connection = self.listener.accept()  # blocking
                 logger.debug("Accepted connection from %s", self.listener.last_accepted)
                 try:
@@ -101,9 +113,9 @@ class Server:
                 finally:
                     self.listener.close()
         except KeyboardInterrupt:
-            logger.debug("Server interrupted")
+            logger.info("Server interrupted")
 
-    def _run(self, connection):
+    def _run(self, connection) -> None:
         """Main loop while connection is maintained."""
         while True:
             # Read message
@@ -131,11 +143,14 @@ class Server:
             if command == "help":
                 is_help = True
                 if len(args) == 0:
-                    logger.info("No command provided to help.")
+                    calls = list(map(str, self.registered_calls.keys()))
+                    connection.send(f"Registered calls: {calls}")
                     continue
                 command = args[0]
 
-            func = self.registered_calls.get(command, None)
+            func = self.registered_calls.get(
+                command, self.auxiliary_calls.get(command, None)
+            )
             if func is None:
                 logger.info("Command '%s' does not exist.", command)
                 connection.send(f"Invalid command: '{command}'")
@@ -147,11 +162,13 @@ class Server:
 
             try:
                 result = func(*args, **kwargs)
-                if result is not None:
-                    connection.send(result)
+                connection.send(result)
             except Exception as e:
                 logger.info("Function threw error: %s", e)
-                connection.send(f"Error: '{e}'")
+                connection.send(e)
+
+    def has_registered(self, name: str) -> bool:
+        return name in self.registered_calls
 
     def register(self, name_or_func, func=None) -> bool:
         # Extract name via function inspection
@@ -165,33 +182,38 @@ class Server:
             name = name_or_func
 
         name = name.lower()
-        if name in self.registered_calls:
-            logger.error("Function '%s' already registered.", name)
+        if self.has_registered(name):
+            logger.warning("Function '%s' already registered - ignored.", name)
             return False
 
         self.registered_calls[name] = func
         return True
 
     def unregister(self, name):
-        if name == "close":
+        if name in self.auxiliary_calls:
             return
         if name not in self.registered_calls:
-            logger.error("Function '%s' not registered.", name)
+            logger.warning("Function '%s' already not registered - ignored.", name)
+            return
         del self.registered_calls[name]
 
-    def help(self):
+    def print_usage(self):
         """Prints client usage help."""
-        aux_calls = ["help", "healthcheck", "close"]
         calls = list(map(str, self.registered_calls.keys()))
-        calls = sorted(k for k in calls if k not in aux_calls)
-        ip = get_ip_address()
+        calls = sorted(k for k in calls if k not in self.auxiliary_calls)
+        args = []
+        if self.address != "127.0.0.1":
+            args.append(f"'{get_ip_address()}'")
+        if self.port != DEFAULT_PORT:
+            args.append(f"port={self.port}")
+        _ipport = ", ".join(args)
         text = [
             f"Address: {self.address}:{self.port}",
             f"Registered calls: {calls}",
-            f"Auxiliary calls: {aux_calls}",
+            f"Auxiliary calls: {list(self.auxiliary_calls.keys())}",
             "",
             ">>> from kochen.ipcutil import Client",
-            f">>> c = Client('{ip}', port={self.port})",
+            f">>> c = Client({_ipport})",
             ">>> c.healthcheck()",
         ]
         if len(calls) > 0:
@@ -201,17 +223,102 @@ class Server:
             text[0] += f" (secret: {secret})"
             text[5] = text[5][:-1] + f", secret='{secret}')"
 
-        print("\n".join(text + [""]))
+        print("\n".join([""] + text + [""]), file=sys.stderr)
+
+
+class Server(ServerInternal):
+    """A simple server class to open ports and assign function calls.
+
+    Args:
+        address: IPv4 address of listening interface
+        port: Listen port of interface
+        secret: Symmetric key for optional encryption
+        devices: List of initialized devices for introspection (see below)
+
+    Examples:
+
+        # Create a server for client to communicate with
+        >>> def hello(name):
+        ...     return "hi {}!".format(name)
+        >>> server = Server("localhost", port=3000)
+        >>> server
+        Server(127.0.0.1:3000, devices=[])
+        >>> server.register(hello)
+        >>> server.run()
+
+        # Servers can be optionally supplied with device classes, which allow
+        # their methods to be reverse proxied by the server.
+        >>> pm = Powermeter(...)
+        >>> pm = Server("localhost", port=3000, devices=[pm])
+        >>> pm
+        Server(127.0.0.1:3000, devices=[Powermeter])
+        >>> pm.get_voltage
+        <function Powermeter.get_voltage>
+        >>> pm.run()
+        >>> Client("localhost", port=3000).get_voltage()
+        1.000
+    """
+
+    def __init__(self, address="*", port=DEFAULT_PORT, secret=None, devices=()):
+        super().__init__(address, port, secret)
+        self._devices = set(devices)
+        for device in devices:
+            self.register(device)
+
+    def register(self, name_or_func_or_device, func=None):
+        if (
+            func is None and inspect.isfunction(name_or_func_or_device)
+        ) or inspect.isfunction(func):
+            # TODO: Check if __class__ exists
+            return super().register(name_or_func_or_device, func)
+
+        device = name_or_func_or_device
+        namedmethods = inspect.getmembers(device, predicate=inspect.ismethod)
+        for name, method in namedmethods:
+            if name.startswith("__"):
+                continue  # no point forwarding magic methods
+
+            # Warn if new method will shadow previously implemented methods
+            if self.has_registered(name):
+                logger.warning("Function '%s' already registered - ignored.", name)
+
+            super().register(name, method)
+
+        self._devices.add(device)
+
+    def unregister(self, name_or_func_or_device):
+        name_or_device = name_or_func_or_device
+        if inspect.isfunction(name_or_func_or_device):
+            name_or_device = name_or_func_or_device.__name__
+        if isinstance(name_or_device, str):
+            return super().unregister(str(name_or_device))
+
+        device = name_or_device
+        if device not in self._devices:
+            logger.error(f"Device '{device}' not registered.")
+            return
+
+        namedmethods = inspect.getmembers(device, predicate=inspect.ismethod)
+        for name, method in namedmethods:
+            if name.startswith("__"):
+                continue
+            super().unregister(name)
+        self._devices.remove(device)
+
+    def __repr__(self):
+        names = [device.__class__.__name__ for device in self._devices]
+        pretty_names = f"[{', '.join(names)}]"
+        address = f"{self.address}:{self.port}"
+        return f"{type(self).__name__}({address}, devices={pretty_names})"
 
 
 class ClientInternal:
     """Only way to check if really down is to send a message."""
 
-    def __init__(self, address="localhost", port=7378, secret=None):
-        secret = convert_to_bytes(secret)
-        self.address = address
+    def __init__(self, address="localhost", port=DEFAULT_PORT, secret=None):
+        self.address = parse_ip_address(address)
         self.port = port
-        self.secret = secret
+        self.secret = convert_to_bytes(secret)
         self.connection = None
 
     # LOW-LEVEL INTERFACES
@@ -253,10 +360,16 @@ class ClientInternal:
     def call(self, command: str, *args, sendonly=False, **kwargs):
         if command.lower() == "close":
             sendonly = True
-        if self.connect():
-            self.connection.send([command, args, kwargs])
-            if not sendonly:
-                return self.connection.recv()
+        while True:
+            if self.connect():
+                self.connection.send([command, args, kwargs])
+                if sendonly:
+                    return
+                try:
+                    return self.connection.recv()
+                except EOFError:
+                    self.connection.close()
+                    continue
 
     def send(self, command: str, *args, **kwargs):
         return self.call(command, *args, sendonly=True, **kwargs)
@@ -317,7 +430,7 @@ class Client:
         Currently TypeError is not emitted if kwargs not existent. To fix this.
     """
 
-    def __init__(self, address="localhost", port=7378, secret=None, devices=()):
+    def __init__(self, address="localhost", port=DEFAULT_PORT, secret=None, devices=()):
         self.__client = ClientInternal(address, port, secret)
         self.__devices = devices
         for device in devices:
@@ -345,17 +458,18 @@ class Client:
                 warnings.warn(f"'{name}' was reimplemented by '{device.__name__}'.")
 
             # Create an internal function with closure
-            def create_f(name):
+            def create_f(name, signature):
                 def f(*args, **kwargs):
+                    # signature.bind(*args, **kwargs)  # emits TypeError if no match
                     return getattr(self.__client, name)(*args, **kwargs)
 
-                f.__signature__ = inspect.signature(method)
+                f.__signature__ = signature
                 f.__doc__ = inspect.getdoc(method)
                 f.__name__ = name
                 f.__qualname__ = f"{device.__name__}.{name}"
                 return f
 
-            setattr(self, name, create_f(name))
+            setattr(self, name, create_f(name, inspect.signature(method)))
 
     def __repr__(self):
         names = [device.__name__ for device in self.__devices]
