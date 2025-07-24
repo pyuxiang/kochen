@@ -583,15 +583,36 @@ class Client:
 
             # Warn if new method will shadow previously implemented methods
             if name in vars(Client):
-                warnings.warn(f"'{name}' was reimplemented by '{cls.__name__}'.")
+                warnings.warn(
+                    f"'{name}' was reimplemented by '{cls.__name__}' - ignored."
+                )
 
             setattr(self, name, self.__create_closure(cls, name, method))
 
-    def __create_closure(self, cls, name, method):
+        namedprops = inspect.getmembers(
+            cls, predicate=lambda x: isinstance(x, property)
+        )
+        for name, prop in namedprops:
+            if name.startswith("__"):
+                continue
+            # Warn if new method will shadow previously implemented methods
+            if name in vars(self):
+                warnings.warn(
+                    f"'{name}' was reimplemented by '{cls.__name__}' - ignored."
+                )
+            f = property(
+                self.__create_closure(cls, f"get_{name}", prop.fget, True),
+                self.__create_closure(cls, f"set_{name}", prop.fset, True),
+            )
+            setattr(Client, name, f)
+
+    def __create_closure(self, cls, name, method, class_binding=False):
         signature = inspect.signature(method)
         doc = inspect.getdoc(method)
 
         def f(*args, **kwargs):
+            if class_binding:
+                args = args[1:]  # ignore first 'self' argument
             signature.bind(None, *args, **kwargs)  # emits TypeError if no match
             return getattr(self.__client, name)(*args, **kwargs)
 
