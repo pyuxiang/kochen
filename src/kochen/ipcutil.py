@@ -72,6 +72,27 @@ def parse_ip_address(address):
     return address
 
 
+def extract_methods(cls):
+    # Extract using the class to avoid triggering property getter calls
+    namedmethods = inspect.getmembers(cls, predicate=inspect.isfunction)
+    for name, method in namedmethods:
+        if name.startswith("__"):
+            continue
+        yield name, name, method
+
+    # Extract properties
+    namedprops = inspect.getmembers(cls, predicate=lambda x: isinstance(x, property))
+    for name, prop in namedprops:
+        if name.startswith("__"):
+            continue
+        for prefix in ("get", "set", "del"):
+            _name = f"{prefix}_{name}"
+            _method = getattr(prop, f"f{prefix}")
+            if _method is None:
+                continue
+            yield _name, name, _method  # replacement, original, function
+
+
 class ServerInternal:
     """See documentation for 'Server' instead.
 
@@ -317,7 +338,6 @@ class Server(ServerInternal):
             self.register(instance)
 
     def register(self, func_or_instance, name: str = None):
-        # TODO: Check if __class__ can be used for direct checking
         if inspect.isfunction(func_or_instance):
             return super().register(func_or_instance, name)
 
@@ -325,11 +345,11 @@ class Server(ServerInternal):
         if instance in self._instances:
             raise ValueError(f"Instance '{instance}' already registered.")
 
-        namedmethods = inspect.getmembers(instance, predicate=inspect.ismethod)
-        for name, method in namedmethods:
-            if name.startswith("__"):
-                continue  # no point forwarding magic methods
-            super().register(method, name)
+        # Extract using the class to avoid triggering property getter calls
+        cls = instance.__class__
+        for command, name, method in extract_methods(cls):
+            f = self.__create_closure(instance, name, method)
+            super().register(f, command)
         self._instances.add(instance)
 
     def unregister(self, name_or_func_or_instance):
@@ -342,12 +362,24 @@ class Server(ServerInternal):
         if instance not in self._instances:
             raise ValueError(f"Instance '{instance}' not registered.")
 
-        namedmethods = inspect.getmembers(instance, predicate=inspect.ismethod)
-        for name, _ in namedmethods:
-            if name.startswith("__"):
-                continue
+        cls = instance.__class__
+        for name, *_ in extract_methods(cls):
             super().unregister(name)
         self._instances.remove(instance)
+
+    def __create_closure(self, instance, name, method):
+        signature = inspect.signature(method)
+        doc = inspect.getdoc(method)
+
+        def f(*args, **kwargs):
+            signature.bind(instance, *args, **kwargs)  # emits TypeError if no match
+            return method(instance, *args, **kwargs)
+
+        f.__signature__ = signature
+        f.__doc__ = doc
+        f.__name__ = name
+        f.__qualname__ = f"{instance.__class__.__name__}.{name}"
+        return f
 
     def __repr__(self):
         names = [instance.__class__.__name__ for instance in self._instances]
