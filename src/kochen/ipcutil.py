@@ -125,7 +125,7 @@ class ServerInternal:
     def run(self, help: bool = True) -> None:
         """Starts the server."""
         if help:
-            self.help()
+            self.help_server()
         try:
             self.restart = True
             while self.restart:
@@ -142,9 +142,6 @@ class ServerInternal:
 
     def _r(self, connection) -> None:
         """Main loop while connection is maintained. Do not call directly."""
-        # Cache message containing available calls
-        calls = list(map(str, self.registered_calls.keys()))
-        cmd_text = f"Available commands: {calls}"
 
         # Unwrapper for control status codes, to reduce communication overhead
         def send(ctrl_msg: CtrlMsg, data=None):
@@ -177,7 +174,7 @@ class ServerInternal:
             # Send to client help information
             if command == "help":
                 if len(args) == 0:  # show server registered calls
-                    send(CtrlMsg.INFO, cmd_text)
+                    send(CtrlMsg.INFO, self.help_client())
                     continue
 
                 is_help = True
@@ -190,7 +187,7 @@ class ServerInternal:
             if f is None:
                 reply = f"Command '{command}' is not registered."
                 if is_help:
-                    reply = f"{reply}\n{cmd_text}"
+                    reply = f"{reply}\n{self.help_client()}"
                     send(CtrlMsg.INFO, reply)
                     continue
                 send(CtrlMsg.ERROR, reply)
@@ -260,7 +257,7 @@ class ServerInternal:
         del self.registered_calls[name]
         return True
 
-    def help(self):
+    def help_server(self):
         """Prints client usage help.
 
         This is useful to provide a quick-start guide to connecting clients to
@@ -293,6 +290,10 @@ class ServerInternal:
 
         # Assume interactive: avoid using logger and just directly pipe to stderr
         print(block, file=sys.stderr)
+
+    def help_client(self):
+        calls = list(map(str, self.registered_calls.keys()))
+        return f"Available commands: {calls}"
 
 
 class Server(ServerInternal):
@@ -330,6 +331,7 @@ class Server(ServerInternal):
 
     def __init__(self, address="*", port=DEFAULT_PORT, secret=None, proxy=()):
         super().__init__(address, port, secret)
+        self.registered_props = set()
 
         # Auto-wrap single objects
         if type(proxy) not in (list, tuple):
@@ -352,6 +354,10 @@ class Server(ServerInternal):
         for command, name, method in extract_methods(cls):
             f = self.__create_closure(instance, name, method)
             super().register(f, command)
+
+            # Register property names as well
+            if command != name and name not in self.registered_props:
+                self.registered_props.add(name)
         self._instances.add(instance)
 
     def unregister(self, name_or_func_or_instance):
@@ -365,9 +371,25 @@ class Server(ServerInternal):
             raise ValueError(f"Instance '{instance}' not registered.")
 
         cls = instance.__class__
-        for name, *_ in extract_methods(cls):
-            super().unregister(name)
+        for command, name, method in extract_methods(cls):
+            super().unregister(command)
+
+            # Unregister property names as well
+            if command != name and name in self.registered_props:
+                self.registered_props.remove(name)
         self._instances.remove(instance)
+
+    def help_client(self):
+        _calls = list(map(str, self.registered_calls.keys()))
+        props = list(map(str, self.registered_props))
+        calls = []
+        for call in _calls:
+            if call.startswith("get_") and call[4:] in props:
+                continue
+            if call.startswith("set_") and call[4:] in props:
+                continue
+            calls.append(call)
+        return f"Available calls: {calls}\nAvailable properties: {props}"
 
     def __create_closure(self, instance, name, method):
         signature = inspect.signature(method)
