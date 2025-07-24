@@ -514,12 +514,10 @@ class Client:
 
             1. Accepts a set of classes, whose methods can be exposed by
                'dir(Client(...))' and inspected using 'help', as if it were a
-               local instance of the class.
+               local instance of the class. This includes signature checking.
 
             2. It hides the internal abstraction of '_Client', but its methods
                can still be called as fallback.
-
-        Currently TypeError is not emitted if kwargs not existent. To fix this.
     """
 
     def __init__(self, address="localhost", port=DEFAULT_PORT, secret=None, proxy=()):
@@ -554,19 +552,21 @@ class Client:
             if name in vars(Client):
                 warnings.warn(f"'{name}' was reimplemented by '{cls.__name__}'.")
 
-            # Create an internal function with closure
-            def create_f(name, signature):
-                def f(*args, **kwargs):
-                    # signature.bind(*args, **kwargs)  # emits TypeError if no match
-                    return getattr(self.__client, name)(*args, **kwargs)
+            setattr(self, name, self.__create_closure(cls, name, method))
 
-                f.__signature__ = signature
-                f.__doc__ = inspect.getdoc(method)
-                f.__name__ = name
-                f.__qualname__ = f"{cls.__name__}.{name}"
-                return f
+    def __create_closure(self, cls, name, method):
+        signature = inspect.signature(method)
+        doc = inspect.getdoc(method)
 
-            setattr(self, name, create_f(name, inspect.signature(method)))
+        def f(*args, **kwargs):
+            signature.bind(None, *args, **kwargs)  # emits TypeError if no match
+            return getattr(self.__client, name)(*args, **kwargs)
+
+        f.__signature__ = signature
+        f.__doc__ = doc
+        f.__name__ = name
+        f.__qualname__ = f"{cls.__name__}.{name}"
+        return f
 
     def __repr__(self):
         names = [cls.__name__ for cls in self.__classes]
