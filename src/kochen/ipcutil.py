@@ -197,7 +197,7 @@ class ServerInternal:
             if is_help:
                 doc = f.__doc__
                 if doc is None:
-                    doc = ""
+                    doc = "No help available."
                 send(CtrlMsg.INFO, doc)
                 continue
             try:
@@ -391,6 +391,10 @@ class Server(ServerInternal):
         text[1] = f"Registered calls: {calls}"
         if props:
             text.insert(2, f"Registered properties: {props}")
+
+        # Dirty hack to print proxied classes
+        names = [instance.__class__.__name__ for instance in self._instances]
+        text[0] += f" (proxy=[{','.join(names)}])"
         return text
 
     def help_client(self):
