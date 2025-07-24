@@ -112,13 +112,15 @@ class ServerInternal:
             "close": None,  # special message
         }
 
-        # Configure root logger if no handler provided downstream, for ease of use
-        # TODO: Check if the logging setup logic is correct.
+        # Configure default logger if no handler provided downstream, for ease of use
         if not logger.hasHandlers():
             _LOGGING_FMT = (
                 "{asctime}\t{levelname:<7s}\t{funcName}:{lineno}\t| {message}"
             )
-            logging.basicConfig(level=logging.DEBUG, format=_LOGGING_FMT, style="{")
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter(fmt=_LOGGING_FMT, style="{"))
+            logger.setLevel(logging.DEBUG)
+            logger.addHandler(handler)
 
     def run(self, help: bool = True) -> None:
         """Starts the server."""
