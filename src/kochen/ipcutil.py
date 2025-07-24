@@ -20,6 +20,7 @@ import sys
 import time
 import warnings
 from multiprocessing.connection import Listener, Client as _Client
+from pydoc import pager
 
 # Set up logging facilities if not available
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ class CtrlMsg(enum.Enum):
     OK = 200
     ERROR = 400
     ERROR_FORWARDED = 500
-    MESSAGE = 1
+    INFO = 100
 
 
 class BadRequest(ValueError):
@@ -149,7 +150,7 @@ class ServerInternal:
             # Send to client help information
             if command == "help":
                 if len(args) == 0:  # show server registered calls
-                    connection.send((CtrlMsg.MESSAGE, cmd_text))
+                    connection.send((CtrlMsg.INFO, cmd_text))
                     continue
 
                 is_help = True
@@ -163,14 +164,14 @@ class ServerInternal:
                 reply = f"Command '{command}' is not registered."
                 if is_help:
                     reply = f"{reply}\n{cmd_text}"
-                    connection.send((CtrlMsg.MESSAGE, reply))
+                    connection.send((CtrlMsg.INFO, reply))
                     continue
                 connection.send((CtrlMsg.ERROR, reply))
                 continue
 
             # Process valid command recognized by the server
             if is_help:
-                connection.send((CtrlMsg.MESSAGE, f.__doc__))
+                connection.send((CtrlMsg.INFO, f.__doc__))
                 continue
             try:
                 result = f(*args, **kwargs)
@@ -393,8 +394,8 @@ class ClientInternal:
         status, result = data
         if status == CtrlMsg.OK:
             return result
-        if status == CtrlMsg.MESSAGE:
-            print(result, file=sys.stderr)  # TODO: Do a pager
+        if status == CtrlMsg.INFO:
+            pager(result)
             return None
 
         # Error sent by server
