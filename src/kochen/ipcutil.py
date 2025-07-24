@@ -9,6 +9,7 @@ References:
 Changelog:
     2021-08-18, Justin: Init for timestamp g2 queries.
     2024-02-20, Justin: Generalize.
+    2025-07-24, Justin: Allow clients/servers to directly proxy classes/instances.
 """
 
 import enum
@@ -273,7 +274,7 @@ class Server(ServerInternal):
         address: IPv4 address of listening interface
         port: Listen port of interface
         secret: Symmetric key for optional encryption
-        devices: List of initialized devices for introspection (see below)
+        proxy: List of proxied instances for introspection (see examples below)
 
     Examples:
 
@@ -282,16 +283,16 @@ class Server(ServerInternal):
         ...     return "hi {}!".format(name)
         >>> server = Server("localhost", port=3000)
         >>> server
-        Server(127.0.0.1:3000, devices=[])
+        Server(127.0.0.1:3000, proxy=[])
         >>> server.register(hello)
         >>> server.run()
 
-        # Servers can be optionally supplied with device classes, which allow
+        # Servers can be optionally supplied with classes, which allow
         # their methods to be reverse proxied by the server.
         >>> pm = Powermeter(...)
-        >>> pm = Server("localhost", port=3000, devices=[pm])
+        >>> pm = Server("localhost", port=3000, proxy=[pm])
         >>> pm
-        Server(127.0.0.1:3000, devices=[Powermeter])
+        Server(127.0.0.1:3000, proxy=[Powermeter])
         >>> pm.get_voltage
         <function Powermeter.get_voltage>
         >>> pm.run()
@@ -299,54 +300,55 @@ class Server(ServerInternal):
         1.000
     """
 
-    def __init__(self, address="*", port=DEFAULT_PORT, secret=None, devices=()):
+    def __init__(self, address="*", port=DEFAULT_PORT, secret=None, proxy=()):
         super().__init__(address, port, secret)
-        self._devices = set(devices)
-        for device in devices:
-            self.register(device)
 
-    def register(self, func_or_device, name: str = None):
+        # Auto-wrap single objects
+        if type(proxy) not in (list, tuple):
+            proxy = [proxy]
+
+        self._instances = set(proxy)  # needed for server to display current proxies
+        for instance in self._instances:
+            self.register(instance)
+
+    def register(self, func_or_instance, name: str = None):
         # TODO: Check if __class__ can be used for direct checking
-        if inspect.isfunction(func_or_device):
-            return super().register(func_or_device, name)
+        if inspect.isfunction(func_or_instance):
+            return super().register(func_or_instance, name)
 
-        device = func_or_device
-        if device in self._devices:
-            raise ValueError(f"Device '{device}' already registered.")
+        instance = func_or_instance
+        if instance in self._instances:
+            raise ValueError(f"Instance '{instance}' already registered.")
 
-        namedmethods = inspect.getmembers(device, predicate=inspect.ismethod)
+        namedmethods = inspect.getmembers(instance, predicate=inspect.ismethod)
         for name, method in namedmethods:
             if name.startswith("__"):
                 continue  # no point forwarding magic methods
-
-            # Warn if new method will shadow previously implemented methods
-            if self.has_registered(name):
-                logger.warning("Command '%s' already registered - ignored.", name)
             super().register(method, name)
-        self._devices.add(device)
+        self._instances.add(instance)
 
-    def unregister(self, name_or_func_or_device):
-        if isinstance(name_or_func_or_device, str) or inspect.isfunction(
-            name_or_func_or_device
+    def unregister(self, name_or_func_or_instance):
+        if isinstance(name_or_func_or_instance, str) or inspect.isfunction(
+            name_or_func_or_instance
         ):
-            return super().unregister(name_or_func_or_device)
+            return super().unregister(name_or_func_or_instance)
 
-        device = name_or_func_or_device
-        if device not in self._devices:
-            raise ValueError(f"Device '{device}' not registered.")
+        instance = name_or_func_or_instance
+        if instance not in self._instances:
+            raise ValueError(f"Instance '{instance}' not registered.")
 
-        namedmethods = inspect.getmembers(device, predicate=inspect.ismethod)
+        namedmethods = inspect.getmembers(instance, predicate=inspect.ismethod)
         for name, _ in namedmethods:
             if name.startswith("__"):
                 continue
             super().unregister(name)
-        self._devices.remove(device)
+        self._instances.remove(instance)
 
     def __repr__(self):
-        names = [device.__class__.__name__ for device in self._devices]
+        names = [instance.__class__.__name__ for instance in self._instances]
         pretty_names = f"[{', '.join(names)}]"
         address = f"{self.address}:{self.port}"
-        return f"{type(self).__name__}({address}, devices={pretty_names})"
+        return f"{type(self).__name__}({address}, proxy={pretty_names})"
 
 
 class ClientInternal:
@@ -467,28 +469,28 @@ class ClientInternal:
 
 
 class Client:
-    """A simple client class to communicate with servers hosting devices.
+    """A simple client class to call server-side commands.
 
     Args:
         address: IPv4 address of remote server
         port: Listen port of remote server
         secret: Symmetric key for optional encryption
-        devices: List of device classes for introspection (see below)
+        proxy: List of proxied classes for introspection (see below)
 
     Examples:
 
         # Create a client to communicate with the remote server
         >>> client = Client("localhost", port=3000)
         >>> client
-        Client(localhost:3000, devices=[])
+        Client(localhost:3000, proxy=[])
         >>> client.get_voltage()  # if server defines 'get_voltage()'
         1.000
 
-        # Clients can be optionally supplied with device classes, which allow
+        # Clients can be optionally supplied with classes, which allow
         # for additional introspection
-        >>> pm = Client("localhost", port=3000, devices=[Powermeter])
+        >>> pm = Client("localhost", port=3000, proxy=[Powermeter])
         >>> pm
-        Client(localhost:3000, devices=[Powermeter])
+        Client(localhost:3000, proxy=[Powermeter])
         >>> pm.get_voltage
         <function Powermeter.get_voltage>
         >>> help(pm.get_voltage)
@@ -501,7 +503,7 @@ class Client:
         This is a higher-level client that wraps the internal '_Client' class,
         for two main purposes:
 
-            1. Accepts a set of device classes, whose methods can be exposed by
+            1. Accepts a set of classes, whose methods can be exposed by
                'dir(Client(...))' and inspected using 'help', as if it were a
                local instance of the class.
 
@@ -511,13 +513,18 @@ class Client:
         Currently TypeError is not emitted if kwargs not existent. To fix this.
     """
 
-    def __init__(self, address="localhost", port=DEFAULT_PORT, secret=None, devices=()):
+    def __init__(self, address="localhost", port=DEFAULT_PORT, secret=None, proxy=()):
         self.__client = ClientInternal(address, port, secret)
-        self.__devices = devices
-        for device in devices:
-            self.__load_device_methods(device)
 
-    def __load_device_methods(self, device):
+        # Auto-wrap single objects
+        if type(proxy) not in (list, tuple):
+            proxy = [proxy]
+
+        self.__classes = set(proxy)  # needed for server to display current proxies
+        for cls in self.__classes:
+            self.__load_class_methods(cls)
+
+    def __load_class_methods(self, cls):
         """
         Note:
             We want to expose the internal methods, so that it looks functionally
@@ -529,14 +536,14 @@ class Client:
             Since only hidden methods (i.e. starting with "__") are defined for this
             class, there is no concern of shadowing.
         """
-        namedmethods = inspect.getmembers(device, predicate=inspect.isfunction)
+        namedmethods = inspect.getmembers(cls, predicate=inspect.isfunction)
         for name, method in namedmethods:
             if name.startswith("__"):
                 continue  # no point forwarding magic methods
 
             # Warn if new method will shadow previously implemented methods
             if name in vars(Client):
-                warnings.warn(f"'{name}' was reimplemented by '{device.__name__}'.")
+                warnings.warn(f"'{name}' was reimplemented by '{cls.__name__}'.")
 
             # Create an internal function with closure
             def create_f(name, signature):
@@ -547,16 +554,16 @@ class Client:
                 f.__signature__ = signature
                 f.__doc__ = inspect.getdoc(method)
                 f.__name__ = name
-                f.__qualname__ = f"{device.__name__}.{name}"
+                f.__qualname__ = f"{cls.__name__}.{name}"
                 return f
 
             setattr(self, name, create_f(name, inspect.signature(method)))
 
     def __repr__(self):
-        names = [device.__name__ for device in self.__devices]
+        names = [cls.__name__ for cls in self.__classes]
         pretty_names = f"[{', '.join(names)}]"
         address = f"{self.__client.address}:{self.__client.port}"
-        return f"{type(self).__name__}({address}, devices={pretty_names})"
+        return f"{type(self).__name__}({address}, proxy={pretty_names})"
 
     def __getattr__(self, name):
         return getattr(self.__client, name)  # defer to internal client
