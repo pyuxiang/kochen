@@ -263,6 +263,12 @@ class ServerInternal:
         This is useful to provide a quick-start guide to connecting clients to
         the server.
         """
+        text = self.get_help_server()
+        block = "\n".join([""] + text + [""])
+        # Assume interactive: avoid using logger and just directly pipe to stderr
+        print(block, file=sys.stderr)
+
+    def get_help_server(self):
         calls = list(map(str, self.registered_calls.keys()))
         calls = sorted(k for k in calls if k not in self.auxiliary_calls)
         args = []
@@ -286,10 +292,7 @@ class ServerInternal:
             secret = self.secret.decode()  # convert back from bytes
             text[0] += f" (secret: {secret})"
             text[5] = text[5][:-1] + f", secret='{secret}')"
-        block = "\n".join([""] + text + [""])
-
-        # Assume interactive: avoid using logger and just directly pipe to stderr
-        print(block, file=sys.stderr)
+        return text
 
     def help_client(self):
         calls = list(map(str, self.registered_calls.keys()))
@@ -379,7 +382,19 @@ class Server(ServerInternal):
                 self.registered_props.remove(name)
         self._instances.remove(instance)
 
+    def get_help_server(self):
+        text = super().get_help_server()
+        calls, props = self.__help_available_commands()
+        text[1] = f"Registered calls: {calls}"
+        if props:
+            text.insert(2, f"Registered properties: {props}")
+        return text
+
     def help_client(self):
+        calls, props = self.__help_available_commands()
+        return f"Available calls: {calls}\nAvailable properties: {props}"
+
+    def __help_available_commands(self):
         _calls = list(map(str, self.registered_calls.keys()))
         props = list(map(str, self.registered_props))
         calls = []
@@ -389,7 +404,7 @@ class Server(ServerInternal):
             if call.startswith("set_") and call[4:] in props:
                 continue
             calls.append(call)
-        return f"Available calls: {calls}\nAvailable properties: {props}"
+        return calls, props
 
     def __create_closure(self, instance, name, method):
         signature = inspect.signature(method)
