@@ -112,17 +112,22 @@ class ServerInternal:
                 connection = self.listener.accept()  # blocking
                 logger.info("Connected: %s", self.listener.last_accepted)
                 try:
-                    self._run(connection)
+                    self._r(connection)
                 finally:
                     self.listener.close()
         except KeyboardInterrupt:
             logger.info("Server interrupted.")
 
-    def _run(self, connection) -> None:
+    def _r(self, connection) -> None:
         """Main loop while connection is maintained. Do not call directly."""
         # Cache message containing available calls
         calls = list(map(str, self.registered_calls.keys()))
         cmd_text = f"Available commands: {calls}"
+
+        # Unwrapper for control status codes, to reduce communication overhead
+        def send(ctrl_msg: CtrlMsg, data=None):
+            status_code = ctrl_msg.value
+            connection.send((status_code, data))
 
         while True:
             # Read message
@@ -150,7 +155,7 @@ class ServerInternal:
             # Send to client help information
             if command == "help":
                 if len(args) == 0:  # show server registered calls
-                    connection.send((CtrlMsg.INFO, cmd_text))
+                    send(CtrlMsg.INFO, cmd_text)
                     continue
 
                 is_help = True
@@ -164,21 +169,21 @@ class ServerInternal:
                 reply = f"Command '{command}' is not registered."
                 if is_help:
                     reply = f"{reply}\n{cmd_text}"
-                    connection.send((CtrlMsg.INFO, reply))
+                    send(CtrlMsg.INFO, reply)
                     continue
-                connection.send((CtrlMsg.ERROR, reply))
+                send(CtrlMsg.ERROR, reply)
                 continue
 
             # Process valid command recognized by the server
             if is_help:
-                connection.send((CtrlMsg.INFO, f.__doc__))
+                send(CtrlMsg.INFO, f.__doc__)
                 continue
             try:
                 result = f(*args, **kwargs)
-                connection.send((CtrlMsg.OK, result))
+                send(CtrlMsg.OK, result)
             except Exception as e:
                 logger.debug("Command '%s' threw error: %s", command, e)
-                connection.send((CtrlMsg.ERROR_FORWARDED, e))
+                send(CtrlMsg.ERROR_FORWARDED, e)
 
     def has_registered(self, name: str) -> bool:
         return name in self.registered_calls
@@ -391,18 +396,21 @@ class ClientInternal:
         if (data := self.read_raw(blocking)) is None:
             return None
 
-        status, result = data
-        if status == CtrlMsg.OK:
+        status_code, result = data
+        status = CtrlMsg(status_code)
+        if status is CtrlMsg.OK:
             return result
-        if status == CtrlMsg.INFO:
+        if status is CtrlMsg.INFO:
             pager(result)
             return None
 
         # Error sent by server
-        if status == CtrlMsg.ERROR:
+        if status is CtrlMsg.ERROR:
             raise BadRequest(result)
-        else:  # CtrlMsg.ERROR_FORWARDED
+        elif status is CtrlMsg.ERROR_FORWARDED:
             raise result
+        else:
+            raise RuntimeError(f"Unexpected status code: '{status}'")
 
     # SESSION LAYER
 
