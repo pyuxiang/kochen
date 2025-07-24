@@ -554,126 +554,148 @@ class ClientInternal:
         return f
 
 
-class Client:
-    """A simple client class to call server-side commands.
-
-    Args:
-        address: IPv4 address of remote server
-        port: Listen port of remote server
-        secret: Symmetric key for optional encryption
-        proxy: List of proxied classes for introspection (see below)
+def ClientFactory(*args, **kwargs):
+    """Factory for duplicate Client to avoid overriding properties.
 
     Examples:
+        # Without ClientFactory
+        >>> pm = Client(proxy=Powermeter)  # defines voltage
+        >>> vsup = Client(proxy=VoltageSupply)  # defines voltage
+        >>> pm.voltage  # == vsup.voltage
 
-        # Create a client to communicate with the remote server
-        >>> client = Client("localhost", port=3000)
-        >>> client
-        Client(localhost:3000, proxy=[])
-        >>> client.get_voltage()  # if server defines 'get_voltage()'
-        1.000
-
-        # Clients can be optionally supplied with classes, which allow
-        # for additional introspection
-        >>> pm = Client("localhost", port=3000, proxy=[Powermeter])
-        >>> pm
-        Client(localhost:3000, proxy=[Powermeter])
-        >>> pm.get_voltage
-        <function Powermeter.get_voltage>
-        >>> help(pm.get_voltage)
-        get_voltage(self, size=20)
-            ...
-        >>> pm.get_voltage()
-        1.000
-
-    Note:
-        This is a higher-level client that wraps the internal '_Client' class,
-        for two main purposes:
-
-            1. Accepts a set of classes, whose methods can be exposed by
-               'dir(Client(...))' and inspected using 'help', as if it were a
-               local instance of the class. This includes signature checking.
-
-            2. It hides the internal abstraction of '_Client', but its methods
-               can still be called as fallback.
+        # With ClientFactory
+        >>> pm = Client(proxy=Powermeter)  # defines voltage
+        >>> vsup = Client(proxy=VoltageSupply)  # defines voltage
+        >>> pm.voltage  # != vsup.voltage
     """
 
-    def __init__(self, address="localhost", port=DEFAULT_PORT, secret=None, proxy=()):
-        self.__client = ClientInternal(address, port, secret)
+    class Client:
+        """A simple client class to call server-side commands.
 
-        # Auto-wrap single objects
-        if type(proxy) not in (list, tuple):
-            proxy = [proxy]
+        Args:
+            address: IPv4 address of remote server
+            port: Listen port of remote server
+            secret: Symmetric key for optional encryption
+            proxy: List of proxied classes for introspection (see below)
 
-        self.__classes = set(proxy)  # needed for server to display current proxies
-        for cls in self.__classes:
-            self.__load_class_methods(cls)
+        Examples:
 
-    def __load_class_methods(self, cls):
-        """
+            # Create a client to communicate with the remote server
+            >>> client = Client("localhost", port=3000)
+            >>> client
+            Client(localhost:3000, proxy=[])
+            >>> client.get_voltage()  # if server defines 'get_voltage()'
+            1.000
+
+            # Clients can be optionally supplied with classes, which allow
+            # for additional introspection
+            >>> pm = Client("localhost", port=3000, proxy=[Powermeter])
+            >>> pm
+            Client(localhost:3000, proxy=[Powermeter])
+            >>> pm.get_voltage
+            <function Powermeter.get_voltage>
+            >>> help(pm.get_voltage)
+            get_voltage(self, size=20)
+                ...
+            >>> pm.get_voltage()
+            1.000
+
         Note:
-            We want to expose the internal methods, so that it looks functionally
-            the same as the original class this client wrapper is shadowing, which
-            allows users to inspect it using the usual 'dir' methods. This means
-            just storing a table of signatures from 'inspect.signature(method)' is
-            not a complete solution.
+            This is a higher-level client that wraps the internal '_Client' class,
+            for two main purposes:
 
-            Since only hidden methods (i.e. starting with "__") are defined for this
-            class, there is no concern of shadowing.
+                1. Accepts a set of classes, whose methods can be exposed by
+                   'dir(Client(...))' and inspected using 'help', as if it were a
+                   local instance of the class. This includes signature checking.
+
+                2. It hides the internal abstraction of '_Client', but its methods
+                   can still be called as fallback.
         """
-        namedmethods = inspect.getmembers(cls, predicate=inspect.isfunction)
-        for name, method in namedmethods:
-            if name.startswith("__"):
-                continue  # no point forwarding magic methods
 
-            # Warn if new method will shadow previously implemented methods
-            if name in vars(Client):
-                warnings.warn(
-                    f"'{name}' was reimplemented by '{cls.__name__}' - ignored."
-                )
+        def __init__(
+            self, address="localhost", port=DEFAULT_PORT, secret=None, proxy=()
+        ):
+            self.__client = ClientInternal(address, port, secret)
 
-            setattr(self, name, self.__create_closure(cls, name, method))
+            # Auto-wrap single objects
+            if type(proxy) not in (list, tuple):
+                proxy = [proxy]
 
-        namedprops = inspect.getmembers(
-            cls, predicate=lambda x: isinstance(x, property)
-        )
-        for name, prop in namedprops:
-            if name.startswith("__"):
-                continue
-            # Warn if new method will shadow previously implemented methods
-            if name in vars(self):
-                warnings.warn(
-                    f"'{name}' was reimplemented by '{cls.__name__}' - ignored."
-                )
+            self.__classes = set(proxy)  # needed for server to display current proxies
+            for cls in self.__classes:
+                self.__load_class_methods(cls)
 
-            fget = fset = None
-            if prop.fget is not None:
-                fget = self.__create_closure(cls, f"get_{name}", prop.fget, True)
-            if prop.fset is not None:
-                fset = self.__create_closure(cls, f"set_{name}", prop.fset, True)
-            f = property(fget, fset)
-            setattr(Client, name, f)
+        def __load_class_methods(self, cls):
+            """
+            Note:
+                We want to expose the internal methods, so that it looks functionally
+                the same as the original class this client wrapper is shadowing, which
+                allows users to inspect it using the usual 'dir' methods. This means
+                just storing a table of signatures from 'inspect.signature(method)' is
+                not a complete solution.
 
-    def __create_closure(self, cls, name, method, class_binding=False):
-        signature = inspect.signature(method)
-        doc = inspect.getdoc(method)
+                Since only hidden methods (i.e. starting with "__") are defined for this
+                class, there is no concern of shadowing.
+            """
+            namedmethods = inspect.getmembers(cls, predicate=inspect.isfunction)
+            for name, method in namedmethods:
+                if name.startswith("__"):
+                    continue  # no point forwarding magic methods
 
-        def f(*args, **kwargs):
-            if class_binding:
-                args = args[1:]  # ignore first 'self' argument
-            signature.bind(None, *args, **kwargs)  # emits TypeError if no match
-            return getattr(self.__client, name)(*args, **kwargs)
+                # Warn if new method will shadow previously implemented methods
+                if name in vars(Client):
+                    warnings.warn(
+                        f"'{name}' was reimplemented by '{cls.__name__}' - ignored."
+                    )
 
-        f.__signature__ = signature
-        f.__doc__ = doc
-        f.__name__ = name
-        f.__qualname__ = f"{cls.__name__}.{name}"
-        return f
+                setattr(self, name, self.__create_closure(cls, name, method))
 
-    def __repr__(self):
-        names = [cls.__name__ for cls in self.__classes]
-        pretty_names = f"[{', '.join(names)}]"
-        address = f"{self.__client.address}:{self.__client.port}"
-        return f"{type(self).__name__}({address}, proxy={pretty_names})"
+            namedprops = inspect.getmembers(
+                cls, predicate=lambda x: isinstance(x, property)
+            )
+            for name, prop in namedprops:
+                if name.startswith("__"):
+                    continue
+                # Warn if new method will shadow previously implemented methods
+                if name in vars(self):
+                    warnings.warn(
+                        f"'{name}' was reimplemented by '{cls.__name__}' - ignored."
+                    )
 
-    def __getattr__(self, name):
-        return getattr(self.__client, name)  # defer to internal client
+                fget = fset = None
+                if prop.fget is not None:
+                    fget = self.__create_closure(cls, f"get_{name}", prop.fget, True)
+                if prop.fset is not None:
+                    fset = self.__create_closure(cls, f"set_{name}", prop.fset, True)
+                f = property(fget, fset)
+                setattr(Client, name, f)
+
+        def __create_closure(self, cls, name, method, class_binding=False):
+            signature = inspect.signature(method)
+            doc = inspect.getdoc(method)
+
+            def f(*args, **kwargs):
+                if class_binding:
+                    args = args[1:]  # ignore first 'self' argument
+                signature.bind(None, *args, **kwargs)  # emits TypeError if no match
+                return getattr(self.__client, name)(*args, **kwargs)
+
+            f.__signature__ = signature
+            f.__doc__ = doc
+            f.__name__ = name
+            f.__qualname__ = f"{cls.__name__}.{name}"
+            return f
+
+        def __repr__(self):
+            names = [cls.__name__ for cls in self.__classes]
+            pretty_names = f"[{', '.join(names)}]"
+            address = f"{self.__client.address}:{self.__client.port}"
+            return f"{type(self).__name__}({address}, proxy={pretty_names})"
+
+        def __getattr__(self, name):
+            return getattr(self.__client, name)  # defer to internal client
+
+    return Client(*args, **kwargs)
+
+
+Client = ClientFactory  # shadow
