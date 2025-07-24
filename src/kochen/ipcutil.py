@@ -637,10 +637,13 @@ class Client:
                 warnings.warn(
                     f"'{name}' was reimplemented by '{cls.__name__}' - ignored."
                 )
-            f = property(
-                self.__create_closure(cls, f"get_{name}", prop.fget, True),
-                self.__create_closure(cls, f"set_{name}", prop.fset, True),
-            )
+
+            fget = fset = None
+            if prop.fget is not None:
+                fget = self.__create_closure(cls, f"get_{name}", prop.fget, True)
+            if prop.fset is not None:
+                fset = self.__create_closure(cls, f"set_{name}", prop.fset, True)
+            f = property(fget, fset)
             setattr(Client, name, f)
 
     def __create_closure(self, cls, name, method, class_binding=False):
