@@ -11,18 +11,31 @@ Changelog:
     2024-02-20, Justin: Generalize.
 """
 
+import enum
 import inspect
 import logging
 import socket
 import sys
+import time
 import warnings
 from multiprocessing.connection import Listener, Client as _Client
 
 # Set up logging facilities if not available
 logger = logging.getLogger(__name__)
 
-HEALTHCHECK_OK = 200
 DEFAULT_PORT = 4440
+RECONNECTION_TIMEOUT = 1
+
+
+class CtrlMsg(enum.Enum):
+    OK = 200
+    ERROR = 400
+    ERROR_FORWARDED = 500
+    MESSAGE = 1
+
+
+class BadRequest(ValueError):
+    pass
 
 
 def convert_to_bytes(secret):
@@ -63,20 +76,6 @@ class ServerInternal:
     Notes:
         The nice feature about multiprocessing.connection is the use of
         pickle-encoding, so almost arbitrary Python objects can be transmitted.
-
-    Examples:
-        # Server-side
-        >>> def hello(name):
-        ...     return "hi {}!".format(name)
-        >>> s = Server("localhost", secret=1234)
-        >>> s.register(hello)
-        >>> s.run()
-
-        # Client-side
-        >>> c = Client("localhost", secret=1234)
-        >>> c.call("hello bob")
-        "hi bob!"
-        >>> c.call("close")
     """
 
     def __init__(self, address: str = "*", port: int = DEFAULT_PORT, secret=None):
@@ -99,106 +98,145 @@ class ServerInternal:
             )
             logging.basicConfig(level=logging.DEBUG, format=_LOGGING_FMT, style="{")
 
-    def run(self, print_usage: bool = True) -> None:
-        self.print_usage()
+    def run(self, help: bool = True) -> None:
+        """Starts the server."""
+        if help:
+            self.help()
         try:
             self.restart = True
             while self.restart:
                 self.listener = Listener((self.address, self.port), authkey=self.secret)
                 logger.info("Server listening...")
                 connection = self.listener.accept()  # blocking
-                logger.debug("Accepted connection from %s", self.listener.last_accepted)
+                logger.info("Connected: %s", self.listener.last_accepted)
                 try:
                     self._run(connection)
                 finally:
                     self.listener.close()
         except KeyboardInterrupt:
-            logger.info("Server interrupted")
+            logger.info("Server interrupted.")
 
     def _run(self, connection) -> None:
-        """Main loop while connection is maintained."""
+        """Main loop while connection is maintained. Do not call directly."""
+        # Cache message containing available calls
+        calls = list(map(str, self.registered_calls.keys()))
+        cmd_text = f"Available commands: {calls}"
+
         while True:
             # Read message
             try:
                 message = connection.recv()
             except EOFError:
-                logger.debug("Connection terminated by client.")
+                logger.info("Connection terminated by client.")
                 break
             except ConnectionResetError:
-                logger.debug("Connection reset by client.")
+                logger.info("Connection reset by client.")
                 break
 
             # Process message
             command, args, kwargs = message
             command = command.lower()
             is_help = False
+
+            # Terminate server
             if command == "close":
                 self.restart = False
                 connection.close()
-                logger.debug("Server terminated by client.")
+                logger.info("Server terminated by client.")
                 break
-            if command == "healthcheck":
-                connection.send(HEALTHCHECK_OK)
-                continue
+
+            # Send to client help information
             if command == "help":
-                is_help = True
-                if len(args) == 0:
-                    calls = list(map(str, self.registered_calls.keys()))
-                    connection.send(f"Registered calls: {calls}")
+                if len(args) == 0:  # show server registered calls
+                    connection.send((CtrlMsg.MESSAGE, cmd_text))
                     continue
+
+                is_help = True
                 command = args[0]
 
-            func = self.registered_calls.get(
+            # Lookup client command call from both registered and aux tables
+            f = self.registered_calls.get(
                 command, self.auxiliary_calls.get(command, None)
             )
-            if func is None:
-                logger.info("Command '%s' does not exist.", command)
-                connection.send(f"Invalid command: '{command}'")
+            if f is None:
+                reply = f"Command '{command}' is not registered."
+                if is_help:
+                    reply = f"{reply}\n{cmd_text}"
+                    connection.send((CtrlMsg.MESSAGE, reply))
+                    continue
+                connection.send((CtrlMsg.ERROR, reply))
                 continue
 
+            # Process valid command recognized by the server
             if is_help:
-                connection.send(func.__doc__)
+                connection.send((CtrlMsg.MESSAGE, f.__doc__))
                 continue
-
             try:
-                result = func(*args, **kwargs)
-                connection.send(result)
+                result = f(*args, **kwargs)
+                connection.send((CtrlMsg.OK, result))
             except Exception as e:
-                logger.info("Function threw error: %s", e)
-                connection.send(e)
+                logger.debug("Command '%s' threw error: %s", command, e)
+                connection.send((CtrlMsg.ERROR_FORWARDED, e))
 
     def has_registered(self, name: str) -> bool:
         return name in self.registered_calls
 
-    def register(self, name_or_func, func=None) -> bool:
+    def register(self, f, name=None) -> bool:
+        """Registers function with the server, and returns success state.
+
+        If the function is a lambda, a name should be provided for it.
+
+        Examples:
+            >>> def square(x):
+            ...     return x**2
+            >>> server.register(square)
+
+            # Lambda functions must be given an explicit name
+            >>> cube = lambda x: x**3
+            >>> server.register(cube, "cube")
+        """
         # Extract name via function inspection
-        if func is None:
-            name = name_or_func.__name__
+        if name is None:
+            name = f.__name__
             if name == "<lambda>":
-                logger.error("Names must be given for anonymous functions.")
-                return False
-            func = name_or_func
-        else:
-            name = name_or_func
+                raise ValueError("Name must be given for anonymous functions.")
 
         name = name.lower()
         if self.has_registered(name):
-            logger.warning("Function '%s' already registered - ignored.", name)
+            logger.warning("Command '%s' already registered - ignored.", name)
             return False
 
-        self.registered_calls[name] = func
+        self.registered_calls[name] = f
         return True
 
-    def unregister(self, name):
-        if name in self.auxiliary_calls:
-            return
-        if name not in self.registered_calls:
-            logger.warning("Function '%s' already not registered - ignored.", name)
-            return
-        del self.registered_calls[name]
+    def unregister(self, name_or_func) -> bool:
+        """Removes registered function from server, and returns success state."""
+        name = name_or_func
+        if inspect.isfunction(name_or_func):
+            name = name_or_func.__name__
+            if name == "<lambda>":
+                raise ValueError(
+                    "Name assigned to anonymous function must be provided."
+                )
 
-    def print_usage(self):
-        """Prints client usage help."""
+        if name in self.auxiliary_calls:
+            logger.warning(
+                "Command '%s' is a core command that cannot be unregisterd.", name
+            )
+            return False
+        if name not in self.registered_calls:
+            logger.warning("Command '%s' already not registered - ignored.", name)
+            return False
+
+        del self.registered_calls[name]
+        return True
+
+    def help(self):
+        """Prints client usage help.
+
+        This is useful to provide a quick-start guide to connecting clients to
+        the server.
+        """
         calls = list(map(str, self.registered_calls.keys()))
         calls = sorted(k for k in calls if k not in self.auxiliary_calls)
         args = []
@@ -222,8 +260,10 @@ class ServerInternal:
             secret = self.secret.decode()  # convert back from bytes
             text[0] += f" (secret: {secret})"
             text[5] = text[5][:-1] + f", secret='{secret}')"
+        block = "\n".join([""] + text + [""])
 
-        print("\n".join([""] + text + [""]), file=sys.stderr)
+        # Assume interactive: avoid using logger and just directly pipe to stderr
+        print(block, file=sys.stderr)
 
 
 class Server(ServerInternal):
@@ -265,14 +305,15 @@ class Server(ServerInternal):
         for device in devices:
             self.register(device)
 
-    def register(self, name_or_func_or_device, func=None):
-        if (
-            func is None and inspect.isfunction(name_or_func_or_device)
-        ) or inspect.isfunction(func):
-            # TODO: Check if __class__ exists
-            return super().register(name_or_func_or_device, func)
+    def register(self, func_or_device, name: str = None):
+        # TODO: Check if __class__ can be used for direct checking
+        if inspect.isfunction(func_or_device):
+            return super().register(func_or_device, name)
 
-        device = name_or_func_or_device
+        device = func_or_device
+        if device in self._devices:
+            raise ValueError(f"Device '{device}' already registered.")
+
         namedmethods = inspect.getmembers(device, predicate=inspect.ismethod)
         for name, method in namedmethods:
             if name.startswith("__"):
@@ -280,26 +321,22 @@ class Server(ServerInternal):
 
             # Warn if new method will shadow previously implemented methods
             if self.has_registered(name):
-                logger.warning("Function '%s' already registered - ignored.", name)
-
-            super().register(name, method)
-
+                logger.warning("Command '%s' already registered - ignored.", name)
+            super().register(method, name)
         self._devices.add(device)
 
     def unregister(self, name_or_func_or_device):
-        name_or_device = name_or_func_or_device
-        if inspect.isfunction(name_or_func_or_device):
-            name_or_device = name_or_func_or_device.__name__
-        if isinstance(name_or_device, str):
-            return super().unregister(str(name_or_device))
+        if isinstance(name_or_func_or_device, str) or inspect.isfunction(
+            name_or_func_or_device
+        ):
+            return super().unregister(name_or_func_or_device)
 
-        device = name_or_device
+        device = name_or_func_or_device
         if device not in self._devices:
-            logger.error(f"Device '{device}' not registered.")
-            return
+            raise ValueError(f"Device '{device}' not registered.")
 
         namedmethods = inspect.getmembers(device, predicate=inspect.ismethod)
-        for name, method in namedmethods:
+        for name, _ in namedmethods:
             if name.startswith("__"):
                 continue
             super().unregister(name)
@@ -313,7 +350,7 @@ class Server(ServerInternal):
 
 
 class ClientInternal:
-    """Only way to check if really down is to send a message."""
+    """See documentation for 'Client' instead."""
 
     def __init__(self, address="localhost", port=DEFAULT_PORT, secret=None):
         self.address = parse_ip_address(address)
@@ -321,66 +358,110 @@ class ClientInternal:
         self.secret = convert_to_bytes(secret)
         self.connection = None
 
-    # LOW-LEVEL INTERFACES
+    # TRANSPORT LAYER
 
-    def read(self, blocking=True):
-        if self.connection and (blocking or self.connection.poll()):
-            return self.connection.recv()
+    def read_raw(self, blocking=True):
+        """Reads from connection directly.
+
+        If non-blocking read is triggered, a read will be attempted only if
+        there is available data to be read. Note connection needs to be
+        initialized first via 'connect()'.
+        """
+        if not blocking and not self.connection.poll():
+            return None
+        return self.connection.recv()
+
+    def write(self, command: str, *args, **kwargs):
+        """Writes to connection directly."""
+        self.connection.send([command, args, kwargs])
 
     def drain(self):
-        while self.connection and self.connection.poll():
+        """Clears connection message queue."""
+        while self.connection.poll():
             self.connection.recv()
 
-    def is_alive(self) -> bool:
-        if self.connection and not self.connection.closed:
-            if self.connection.poll():
-                return True
-            self.connection.send(["healthcheck", (), {}])
-            return self.read() == HEALTHCHECK_OK
-        return False
+    def read(self, blocking=True):
+        """Read result from server, raising errors if necessary.
 
-    def connect(self):
-        if self.is_alive():
+        This user-facing call is transparent to the status messages.
+        """
+        if (data := self.read_raw(blocking)) is None:
+            return None
+
+        status, result = data
+        if status == CtrlMsg.OK:
+            return result
+        if status == CtrlMsg.MESSAGE:
+            print(result, file=sys.stderr)  # TODO: Do a pager
+            return None
+
+        # Error sent by server
+        if status == CtrlMsg.ERROR:
+            raise BadRequest(result)
+        else:  # CtrlMsg.ERROR_FORWARDED
+            raise result
+
+    # SESSION LAYER
+
+    def is_closed(self):
+        return self.connection is None or self.connection.closed
+
+    def connect(self) -> bool:
+        """Checks if connection is opened, or create it otherwise."""
+        # Assume available connection is always valid
+        if not self.is_closed():
             return True
+
+        # ConnectionRefusedError: server cannot be reached
         try:
-            self.connection = _Client((self.address, self.port), authkey=self.secret)
+            self.connection = _Client(
+                (self.address, self.port),
+                authkey=self.secret,
+            )
             return True
         except ConnectionRefusedError:
             return False
 
-    def close(self, server=False):
-        if server:
-            if self.connect():
-                self.connection.send(["close", (), {}])
-        if self.connection and not self.connection.closed:
-            self.connection.close()
+    def close(self, server: bool = False):
+        """Closes the session, and optionally terminate the server."""
+        if server and self.connect():
+            self.write("close")  # terminate server
+        if not self.is_closed():
+            self.connection.close()  # terminate client
 
-    # HIGH-LEVEL INTERFACES
+    # APPLICATION LAYER
 
-    def call(self, command: str, *args, sendonly=False, **kwargs):
-        if command.lower() == "close":
-            sendonly = True
+    def call(self, command: str, *args, **kwargs):
+        """Returns result of command sent to the server.
+
+        This call will always return a result, even if no output is expected
+        from the command (which is, in this case, 'None').
+        """
         while True:
-            if self.connect():
-                self.connection.send([command, args, kwargs])
-                if sendonly:
-                    return
-                try:
-                    return self.connection.recv()
-                except EOFError:
-                    self.connection.close()
-                    continue
+            # Reattempt connection when closed
+            if not self.connect():
+                time.sleep(RECONNECTION_TIMEOUT)
+                continue
 
-    def send(self, command: str, *args, **kwargs):
-        return self.call(command, *args, sendonly=True, **kwargs)
+            # BrokenPipeError: server dropped connection
+            try:
+                self.write(command, *args, **kwargs)
+            except BrokenPipeError:
+                self.close()
+                continue
 
-    def receive(self, blocking=True):
-        if self.connect():
-            return self.read(blocking)
+            # EOFError: server terminated
+            # ConnectionResetError: server dropped connection (nicely)
+            try:
+                return self.read()
+            except (EOFError, ConnectionResetError):
+                self.close()
+                continue
 
     def __getattr__(self, name):
+        # Methods unknown to the client are deferred to the remote server
         def f(*args, **kwargs):
-            return self.call(name, *args, **kwargs)  # defer to remote server
+            return self.call(name, *args, **kwargs)
 
         return f
 
