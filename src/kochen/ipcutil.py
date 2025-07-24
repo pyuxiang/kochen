@@ -88,7 +88,6 @@ class ServerInternal:
         self.registered_calls = {}
         self.auxiliary_calls = {
             "help": None,
-            "healthcheck": None,
             "close": None,  # special message
         }
 
@@ -259,10 +258,10 @@ class ServerInternal:
             "",
             ">>> from kochen.ipcutil import Client",
             f">>> c = Client({_ipport})",
-            ">>> c.healthcheck()",
         ]
         if len(calls) > 0:
             text.append(f">>> c.help('{calls[0]}')")
+            text.append(f">>> c.{calls[0]}(...)")
         if self.secret is not None:
             secret = self.secret.decode()  # convert back from bytes
             text[0] += f" (secret: {secret})"
@@ -313,8 +312,8 @@ class Server(ServerInternal):
         if type(proxy) not in (list, tuple):
             proxy = [proxy]
 
-        self._instances = set(proxy)  # needed for server to display current proxies
-        for instance in self._instances:
+        self._instances = set()  # needed for server to display current proxies
+        for instance in proxy:
             self.register(instance)
 
     def register(self, func_or_instance, name: str = None):
