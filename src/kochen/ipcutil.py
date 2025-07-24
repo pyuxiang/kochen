@@ -195,7 +195,10 @@ class ServerInternal:
 
             # Process valid command recognized by the server
             if is_help:
-                send(CtrlMsg.INFO, f.__doc__)
+                doc = f.__doc__
+                if doc is None:
+                    doc = ""
+                send(CtrlMsg.INFO, doc)
                 continue
             try:
                 result = f(*args, **kwargs)
