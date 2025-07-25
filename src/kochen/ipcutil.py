@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Opens socket for intercomputer communication.
 
+A how-to guide can be found at '../../docs/ipcutil.md'. Note also that this
+module requires Python >3.8, though I can't remember the exact reason why.
+
 References:
     1. <https://zeromq.org/>
     2. <https://rpyc.readthedocs.io/en/latest/index.html>
