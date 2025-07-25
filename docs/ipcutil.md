@@ -109,8 +109,8 @@ Auxiliary calls: ['help', 'close']
 
 >>> from kochen.ipcutil import Client
 >>> c = Client(address='192.168.1.10')
->>> c.help('pairs')
->>> c.pairs(...)
+>>> c.help('hello')
+>>> c.hello(...)
 
 2025-07-25 15:05:38,900 INFO    run:135 | Server listening...
 ```
