@@ -72,12 +72,13 @@ def parse_ip_address(address):
     return address
 
 
-def extract_methods(cls):
+def extract_methods(cls, prefix: str = ""):
     # Extract using the class to avoid triggering property getter calls
     namedmethods = inspect.getmembers(cls, predicate=inspect.isfunction)
     for name, method in namedmethods:
         if name.startswith("__"):
             continue
+        name = f"{prefix}{name}"
         yield name, name, method
 
     # Extract properties
@@ -85,9 +86,10 @@ def extract_methods(cls):
     for name, prop in namedprops:
         if name.startswith("__"):
             continue
-        for prefix in ("get", "set", "del"):
-            _name = f"{prefix}_{name}"
-            _method = getattr(prop, f"f{prefix}")
+        name = f"{prefix}{name}"
+        for func in ("get", "set", "del"):
+            _name = f"{func}_{name}"
+            _method = getattr(prop, f"f{func}")
             if _method is None:
                 continue
             yield _name, name, _method  # replacement, original, function
@@ -210,7 +212,7 @@ class ServerInternal:
     def has_registered(self, name: str) -> bool:
         return name in self.registered_calls
 
-    def register(self, f, name=None) -> bool:
+    def register(self, f, name: str = None) -> bool:
         """Registers function with the server, and returns success state.
 
         If the function is a lambda, a name should be provided for it.
@@ -339,14 +341,12 @@ class Server(ServerInternal):
         super().__init__(address=address, port=port, secret=secret)
         self.registered_props = set()
 
-        # Auto-wrap single objects
-        proxy = register
-        if type(proxy) not in (list, tuple):
-            proxy = [proxy]
-
         self._instances = set()  # needed for server to display current proxies
-        for instance in proxy:
-            self.register(instance)
+        for proxy in register:
+            # Auto-wrap classes into (class, prefix) pairs
+            if type(proxy) not in (list, tuple):
+                proxy = (proxy, None)
+            self.register(*proxy)
 
     def register(self, func_or_instance, name: str = None):
         if inspect.isfunction(func_or_instance):
@@ -358,7 +358,8 @@ class Server(ServerInternal):
 
         # Extract using the class to avoid triggering property getter calls
         cls = instance.__class__
-        for command, name, method in extract_methods(cls):
+        prefix = "" if name is None else name
+        for command, name, method in extract_methods(cls, prefix):
             f = self.__create_closure(instance, name, method)
             super().register(f, command)
 
@@ -614,20 +615,26 @@ def Client(*args, **kwargs):
         """
 
         def __init__(
-            self, *register, address="localhost", port=DEFAULT_PORT, secret=None,
+            self,
+            *register,
+            address="localhost",
+            port=DEFAULT_PORT,
+            secret=None,
         ):
             self.__client = ClientInternal(address=address, port=port, secret=secret)
 
-            # Auto-wrap single objects
-            proxy = register
-            if type(proxy) not in (list, tuple):
-                proxy = [proxy]
+            # Auto-wrap classes into (class, prefix) pairs
+            proxies = []
+            for proxy in register:
+                if type(proxy) not in (list, tuple):
+                    proxy = (proxy, "")
+                proxies.append(proxy)
 
-            self.__classes = set(proxy)  # needed for server to display current proxies
-            for cls in self.__classes:
-                self.__load_class_methods(cls)
+            self.__classes = set(proxies)  # needed for server to display
+            for cls, prefix in self.__classes:
+                self.__load_class_methods(cls, prefix)
 
-        def __load_class_methods(self, cls):
+        def __load_class_methods(self, cls, prefix: str = ""):
             """
             Note:
                 We want to expose the internal methods, so that it looks functionally
@@ -643,6 +650,7 @@ def Client(*args, **kwargs):
             for name, method in namedmethods:
                 if name.startswith("__"):
                     continue  # no point forwarding magic methods
+                name = f"{prefix}{name}"
 
                 # Warn if new method will shadow previously implemented methods
                 if name in vars(Client):
@@ -658,6 +666,8 @@ def Client(*args, **kwargs):
             for name, prop in namedprops:
                 if name.startswith("__"):
                     continue
+                name = f"{prefix}{name}"
+
                 # Warn if new method will shadow previously implemented methods
                 if name in vars(self):
                     warnings.warn(
@@ -689,8 +699,8 @@ def Client(*args, **kwargs):
             return f
 
         def __repr__(self):
-            names = [cls.__name__ for cls in self.__classes]
-            pretty_names = f"[{', '.join(names)}]"
+            names = [cls.__name__ for cls, _ in self.__classes]
+            pretty_names = f"[{', '.join(set(names))}]"
             address = f"{self.__client.address}:{self.__client.port}"
             return f"{type(self).__name__}({address}) {pretty_names}"
 
