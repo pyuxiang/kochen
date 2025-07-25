@@ -101,7 +101,7 @@ class ServerInternal:
         pickle-encoding, so almost arbitrary Python objects can be transmitted.
     """
 
-    def __init__(self, address: str = "*", port: int = DEFAULT_PORT, secret=None):
+    def __init__(self, *, address: str = "*", port: int = DEFAULT_PORT, secret=None):
         self.address = parse_ip_address(address)
         self.port = port
         self.secret = convert_to_bytes(secret)
@@ -276,7 +276,7 @@ class ServerInternal:
         calls = sorted(k for k in calls if k not in self.auxiliary_calls)
         args = []
         if self.address != "127.0.0.1":
-            args.append(f"'{get_ip_address()}'")
+            args.append(f"address='{get_ip_address()}'")
         if self.port != DEFAULT_PORT:
             args.append(f"port={self.port}")
         _ipport = ", ".join(args)
@@ -316,30 +316,31 @@ class Server(ServerInternal):
         # Create a server for client to communicate with
         >>> def hello(name):
         ...     return "hi {}!".format(name)
-        >>> server = Server("localhost", port=3000)
+        >>> server = Server(address="localhost", port=3000)
         >>> server
-        Server(127.0.0.1:3000, proxy=[])
+        Server(127.0.0.1:3000) []
         >>> server.register(hello)
         >>> server.run()
 
         # Servers can be optionally supplied with classes, which allow
         # their methods to be reverse proxied by the server.
         >>> pm = Powermeter(...)
-        >>> pm = Server("localhost", port=3000, proxy=[pm])
+        >>> pm = Server(pm, address="localhost", port=3000)
         >>> pm
-        Server(127.0.0.1:3000, proxy=[Powermeter])
+        Server(127.0.0.1:3000) [Powermeter]
         >>> pm.get_voltage
         <function Powermeter.get_voltage>
         >>> pm.run()
-        >>> Client("localhost", port=3000).get_voltage()
+        >>> Client(address="localhost", port=3000).get_voltage()
         1.000
     """
 
-    def __init__(self, address="*", port=DEFAULT_PORT, secret=None, proxy=()):
-        super().__init__(address, port, secret)
+    def __init__(self, *register, address="*", port=DEFAULT_PORT, secret=None):
+        super().__init__(address=address, port=port, secret=secret)
         self.registered_props = set()
 
         # Auto-wrap single objects
+        proxy = register
         if type(proxy) not in (list, tuple):
             proxy = [proxy]
 
@@ -394,7 +395,7 @@ class Server(ServerInternal):
 
         # Dirty hack to print proxied classes
         names = [instance.__class__.__name__ for instance in self._instances]
-        text[0] += f" (proxy=[{','.join(names)}])"
+        text[0] += f" [{','.join(names)}]"
         return text
 
     def help_client(self):
@@ -431,13 +432,13 @@ class Server(ServerInternal):
         names = [instance.__class__.__name__ for instance in self._instances]
         pretty_names = f"[{', '.join(names)}]"
         address = f"{self.address}:{self.port}"
-        return f"{type(self).__name__}({address}, proxy={pretty_names})"
+        return f"{type(self).__name__}({address}) {pretty_names}"
 
 
 class ClientInternal:
     """See documentation for 'Client' instead."""
 
-    def __init__(self, address="localhost", port=DEFAULT_PORT, secret=None):
+    def __init__(self, *, address="localhost", port=DEFAULT_PORT, secret=None):
         self.address = parse_ip_address(address)
         self.port = port
         self.secret = convert_to_bytes(secret)
@@ -554,18 +555,18 @@ class ClientInternal:
         return f
 
 
-def ClientFactory(*args, **kwargs):
+def Client(*args, **kwargs):
     """Factory for duplicate Client to avoid overriding properties.
 
     Examples:
         # Without ClientFactory
-        >>> pm = Client(proxy=Powermeter)  # defines voltage
-        >>> vsup = Client(proxy=VoltageSupply)  # defines voltage
+        >>> pm = Client(Powermeter)  # defines voltage
+        >>> vsup = Client(VoltageSupply)  # defines voltage
         >>> pm.voltage  # == vsup.voltage
 
         # With ClientFactory
-        >>> pm = Client(proxy=Powermeter)  # defines voltage
-        >>> vsup = Client(proxy=VoltageSupply)  # defines voltage
+        >>> pm = Client(Powermeter)  # defines voltage
+        >>> vsup = Client(VoltageSupply)  # defines voltage
         >>> pm.voltage  # != vsup.voltage
     """
 
@@ -581,17 +582,17 @@ def ClientFactory(*args, **kwargs):
         Examples:
 
             # Create a client to communicate with the remote server
-            >>> client = Client("localhost", port=3000)
+            >>> client = Client(address="localhost", port=3000)
             >>> client
-            Client(localhost:3000, proxy=[])
+            Client(localhost:3000) []
             >>> client.get_voltage()  # if server defines 'get_voltage()'
             1.000
 
             # Clients can be optionally supplied with classes, which allow
             # for additional introspection
-            >>> pm = Client("localhost", port=3000, proxy=[Powermeter])
+            >>> pm = Client(Powermeter, address="localhost", port=3000)
             >>> pm
-            Client(localhost:3000, proxy=[Powermeter])
+            Client(localhost:3000) [Powermeter]
             >>> pm.get_voltage
             <function Powermeter.get_voltage>
             >>> help(pm.get_voltage)
@@ -613,11 +614,12 @@ def ClientFactory(*args, **kwargs):
         """
 
         def __init__(
-            self, address="localhost", port=DEFAULT_PORT, secret=None, proxy=()
+            self, *register, address="localhost", port=DEFAULT_PORT, secret=None,
         ):
-            self.__client = ClientInternal(address, port, secret)
+            self.__client = ClientInternal(address=address, port=port, secret=secret)
 
             # Auto-wrap single objects
+            proxy = register
             if type(proxy) not in (list, tuple):
                 proxy = [proxy]
 
@@ -690,12 +692,9 @@ def ClientFactory(*args, **kwargs):
             names = [cls.__name__ for cls in self.__classes]
             pretty_names = f"[{', '.join(names)}]"
             address = f"{self.__client.address}:{self.__client.port}"
-            return f"{type(self).__name__}({address}, proxy={pretty_names})"
+            return f"{type(self).__name__}({address}) {pretty_names}"
 
         def __getattr__(self, name):
             return getattr(self.__client, name)  # defer to internal client
 
     return Client(*args, **kwargs)
-
-
-Client = ClientFactory  # shadow
