@@ -246,62 +246,112 @@ def data_decoder(dct):
     return dct
 
 
-def filecache(f=None, *, path=None, reload: bool = False, backend: str = "pickle"):
-    """
+def filecache(
+    f=None,
+    *,
+    path=None,
+    overwrite: bool = False,
+    backend: str = "pickle",
+    recursive: bool = False,
+):
+    """Decorator for function memoization, backed by the filesystem.
+
+    Intermediate results for recursive functions can also be cached when
+    'recursive' to True. This is an expensive operation and should be avoided
+    where reasonably possible.
+
     Args:
         f: Function to enable caching for.
         path: Path to cache.
-        reload: Whether to ignore existing + load new values into cache.
+        overwrite: Whether to ignore existing and load new values into cache.
         backend: Backend cache format, one of {"pickle", "json"}.
+        recursive: Whether to reload updated cache after every evaluation.
 
     Examples:
         >>> @filecache
         ... def f(x):
         ...     return x**2
-        >>> @filecache(path="hey", reload=True)
+        >>> @filecache(path="hey", overwrite=True)
         ... def g(x):
         ...     return x**3
+
+    Note:
+        Recursive caching is generally more effective when the recursive
+        relation is written in terms of its subproblems, i.e. the function
+
+            def repeat(f, x, n=1):
+                if n == 0:
+                    return x
+                return repeat(f, f(x), n-1))
+
+        caches 'repeat(f, f(...f(x)...), 0...n)' which is not immediately
+        useful. This is better rewritten as
+
+            def repeat(f, x, n=1):
+                if n == 0:
+                    return x
+                return f(repeat(f, x, n-1))
+
+        which caches 'repeat(f, x, 0...n)' instead. In other words, avoid
+        the use of the accumulation pattern found in tail-recursion (which
+        CPython does not support anyway).
+
+        Recursive caching is not optimal due to the need to reload the cache
+        prior to memoization to avoid cache misses, e.g. cache updates from
+        other memoized functions.
     """
+
+    def read_cache(path, backend):
+        try:
+            if backend == "pickle":
+                with open(path, "rb") as cache:
+                    table = pickle.load(cache)
+            elif backend == "json":
+                with open(path, "r") as cache:
+                    table = json.load(cache, object_hook=data_decoder)
+            else:
+                raise RuntimeError()
+        except:  # noqa: E722
+            return None
+
+        if not isinstance(table, dict):
+            return None
+        return table
+
+    def write_cache(path, backend, table):
+        if backend == "pickle":
+            with open(path, "wb") as cache:
+                pickle.dump(table, cache)
+        elif backend == "json":
+            with open(path, "w") as cache:
+                json.dump(table, cache, cls=DataEncoder)
+        else:
+            raise RuntimeError()
 
     def wrapper(f):
         @functools.wraps(f)
         def cacher(*args, **kwargs):
             fname = f.__name__
-            table = defaultdict(dict)
             key = (args, frozenset(kwargs.items()))
             if backend == "json":
                 key = str(key)
 
-            try:
-                if backend == "pickle":
-                    with open(path, "rb") as cache:
-                        _table = pickle.load(cache)
-                elif backend == "json":
-                    with open(path, "r") as cache:
-                        _table = json.load(cache, object_hook=data_decoder)
-                else:
-                    raise RuntimeError()
+            # Check for memoized value
+            table = read_cache(path, backend)
+            if table is not None:
+                if not overwrite and fname in table and key in table[fname]:
+                    return table[fname][key]
 
-                # Try to read data
-                if isinstance(_table, dict):
-                    table = _table
-                    if not reload and fname in table and key in table[fname]:
-                        return table[fname][key]
-            except:  # noqa: E722
-                pass
-
-            # Evaluate and cache result
+            # Evaluate
             result = f(*args, **kwargs)
-            table[fname][key] = result
-            if backend == "pickle":
-                with open(path, "wb") as cache:
-                    pickle.dump(table, cache)
-            elif backend == "json":
-                with open(path, "w") as cache:
-                    json.dump(table, cache, cls=DataEncoder)
-            else:
-                raise RuntimeError()
 
+            # Memoize
+            if recursive:
+                table = read_cache(path, backend)
+            if table is None:
+                table = defaultdict(dict)
+            table[fname][key] = result
+            write_cache(path, backend, table)
             return result
 
         return cacher
