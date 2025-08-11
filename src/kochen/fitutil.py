@@ -64,9 +64,10 @@ def estimate_gaussian_params(xs, ys):
 
     # Estimate stddev
     # Peak is included to guarantee first iteration is a bisection
+    # Left-bias to ensure value always available
     left = np.searchsorted(ys[: argmax + 1], max / 2, "left")
     right = np.searchsorted(-ys[argmax:], -max / 2, "right") + argmax
-    stddev = (xs[right] - xs[left]) / 2.35482
+    stddev = (xs[right - 1] - xs[left]) / 2.35482
 
     return (amplitude, center, stddev, background)
 
