@@ -410,6 +410,9 @@ def Collector():
         aggregation structure minimizes unnecessary field name repetitions
         and makes for much cleaner code.
 
+        This class cannot be pickled; wrap with 'FrozenCollector' before
+        serialization.
+
         Examples:
 
             # Given some arbitrary data processing/parsing function
@@ -456,7 +459,7 @@ def Collector():
             The internal list returned by this class is actually a subclass
             of list, to avoid unexpected behaviour when assigning lists, e.g.
             multidimensional data. This introduces a minimal subclass overhead
-            when serializing to Python's pickle format.
+            when serializing to Python's pickle format, about 3 bytes/attr.
         """
 
         def __init__(self):
@@ -487,16 +490,73 @@ def Collector():
                 return super().__setattr__(name, value)  # initialize field
             getattr(self, name).append(value)
 
-        def __repr__(self):
+        def __attributes(self):
             d = self.__dict__
             keys = [
                 attr[1:]
                 for attr in d.keys()
                 if isinstance(d[attr], CollectorList) and len(d[attr]) != 0
             ]
-            return f"Collector[{', '.join(keys)}]"
+            return keys
+
+        def __repr__(self):
+            return f"Collector[{', '.join(self.__attributes())}]"
 
     return Collector()
 
 
 collector = Collector()  # generic default for simple usage
+
+
+class FrozenCollector:
+    """Frozen equivalent of Collector.
+
+    Due to the need to override the properties of Collector, the Collector
+    class must be a closure, which also means it cannot be pickled. This
+    class freezes the collected attributes from Collector, and exposes them
+    in the same way as Collector, while allowing for pickling.
+
+    Note that the attributes are no longer protected, i.e. these attributes
+    can be directly overwritten/deleted.
+
+    Examples:
+        # Regular collector
+        >>> c = Collector()
+        >>> c.data = 3
+        >>> c
+        Collector[data]
+        >>> c.data
+        [3]
+        >>> pickle.dumps(c)  # fails
+        AttributeError: Can't get local object 'Collector.<locals>.Collector'
+
+        # Frozen collector
+        >>> f = FrozenCollector(c)
+        >>> f
+        FrozenCollector[data]
+        >>> f.data
+        [3]
+        >>> pickle.dumps(f)  # okay
+        ...
+    """
+
+    def __init__(self, collector, copy: bool = False):
+        """
+        Args:
+            collector: Collector object to freeze.
+            copy: Whether to perform a copy of attributes.
+        """
+        if not hasattr(collector, "_Collector__attributes"):
+            raise ValueError("Argument is not of class 'Collector'")
+
+        self.__attributes = collector._Collector__attributes()
+        for key in self.__attributes:
+            value = getattr(collector, key)
+            if copy:
+                from copy import deepcopy
+
+                value = deepcopy(list(value))
+            setattr(self, key, value)
+
+    def __repr__(self):
+        return f"FrozenCollector[{', '.join(self.__attributes)}]"
