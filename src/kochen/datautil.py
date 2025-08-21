@@ -12,7 +12,7 @@ import pickle
 import re
 import sys
 from collections import defaultdict
-from typing import Optional, Type
+from typing import Optional, Type, Any
 
 import numpy as np
 import tqdm
@@ -396,3 +396,89 @@ FMT_TIME_SECONDS = "%H%M%S"
 FMT_DATE_SECONDS = f"{FMT_DATE_DAY}_{FMT_TIME_SECONDS}"
 FMT_TIME_MICROSECONDS = f"{FMT_TIME_SECONDS}.%f"
 FMT_DATE_MICROSECONDS = f"{FMT_DATE_DAY}_{FMT_TIME_MICROSECONDS}"
+
+
+class CollectorList(list):
+    pass
+
+
+class Collector:
+    """Syntactic sugar to make collecting arbitrary data easier.
+
+    See examples below for a clearer description. Having a simplified
+    aggregation structure minimizes unnecessary field name repetitions
+    and makes for much cleaner code.
+
+    Examples:
+
+        # Given some arbitrary data processing/parsing function
+        >>> def get_signal():
+        ...     return (3, 4.0, 8)
+
+        # Typical boilerplate that can be expected when aggregating data
+        # can look like the following
+        >>> indices = []
+        >>> signals = []
+        >>> errors = []
+        >>> index, signal, error = get_signal()  # first
+        >>> indices.append(index)
+        >>> signals.append(signal)
+        >>> errors.append(error)
+        >>> index, signal, error = get_signal()  # second
+        >>> indices.append(index)
+        >>> signals.append(signal)
+        >>> errors.append(error)
+        >>> indices
+        [3, 3]
+
+        # Using defaultdict only lets you skip the initialization
+        >>> d = collections.defaultdict(list)
+        >>> index, signal, error = get_signal()  # first
+        >>> d["indices"].append(index)
+        ...
+
+        # This class provides the following equivalent statements
+        >>> c = Collector()
+        >>> c.indices, c.signals, c.errors = get_signal()  # first
+        >>> c.indices, c.signals, c.errors = get_signal()  # second
+        >>> c.indices
+        [3, 3]
+
+        # They both behave identical to lists
+        >>> indices.extend([4, 5])
+        >>> c.indices.extend([4, 5])
+
+        # To delete the attribute(s), use the 'del' syntax
+        >>> del c.indices, c.signals, c.errors
+
+    Note:
+        The internal list returned by this class is actually a subclass
+        of list, to avoid unexpected behaviour when assigning lists, e.g.
+        multidimensional data. This introduces a minimal subclass overhead
+        when serializing to Python's pickle format.
+    """
+
+    def __getattr__(self, name: str):
+        internal_name = f"-{name}"  # field with '-' is rarely user-defined
+        setattr(self, internal_name, CollectorList())  # create new list
+
+        def fget(self):
+            return getattr(self, internal_name)
+
+        def fset(self, value):
+            getattr(self, internal_name).append(value)
+
+        def fdel(self):
+            delattr(Collector, name)  # remove property first
+            delattr(self, internal_name)
+
+        setattr(Collector, name, property(fget, fset, fdel))
+        return getattr(self, name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if isinstance(value, CollectorList):
+            return super().__setattr__(name, value)  # initialize field
+        getattr(self, name).append(value)
+
+
+collector = Collector()  # generic default for simple usage
