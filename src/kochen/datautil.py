@@ -480,5 +480,9 @@ class Collector:
             return super().__setattr__(name, value)  # initialize field
         getattr(self, name).append(value)
 
+    def __repr__(self):
+        keys = [attr[1:] for attr in self.__dict__.keys()]
+        return f"Collector[{', '.join(keys)}]"
+
 
 collector = Collector()  # generic default for simple usage
