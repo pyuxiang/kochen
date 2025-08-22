@@ -1,6 +1,6 @@
 [project]
 name = "kochen"
-version = "0.2025.6"
+dynamic = ["version"]
 description = "A compilation of boilerplate scribbles"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -28,13 +28,13 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest",
-  "build",
-  "twine",
-  "pkginfo",  # see: https://github.com/pypi/warehouse/issues/15611
 ]
 
+[tool.hatch.version]
+source = "versioningit"
+
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "versioningit"]
 build-backend = "hatchling.build"
 
 [tool.ruff.lint]
