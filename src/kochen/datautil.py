@@ -560,3 +560,28 @@ class FrozenCollector:
 
     def __repr__(self):
         return f"FrozenCollector[{', '.join(self.__attributes)}]"
+
+
+class FrozenNumpyCollector:
+    """Frozen equivalent of Collector, with numpy array values.
+
+    Similar to 'FrozenCollector', but with attributes casted into numpy arrays
+    for downstream processing.
+    """
+
+    def __init__(self, collector):
+        if not hasattr(collector, "_Collector__attributes") and not hasattr(
+            collector, "_FrozenCollector__attributes"
+        ):
+            raise ValueError("Argument is not of class 'Collector'")
+
+        if hasattr(collector, "_Collector__attributes"):
+            self.__attributes = collector._Collector__attributes()
+        else:
+            self.__attributes = collector._FrozenCollector__attributes()
+        for key in self.__attributes:
+            value = np.asarray(getattr(collector, key))
+            setattr(self, key, value)
+
+    def __repr__(self):
+        return f"FrozenNumpyCollector[{', '.join(self.__attributes)}]"
