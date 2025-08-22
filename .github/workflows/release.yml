@@ -1,0 +1,37 @@
+name: Publish distribution to PyPI
+on: push
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.x"
+    - run: python3 -m pip install --user build
+    - run: python3 -m build
+    - uses: actions/upload-artifact@v4
+      with:
+        name: python-package-distributions
+        path: dist/
+
+  publish-pypi:
+    if: startsWith(github.ref, 'refs/tags/')  # on tag push
+    needs:
+    - build
+    environment:
+      name: release
+      url: https://pypi.org/p/kochen
+    permissions:
+      id-token: write
+
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/download-artifact@v5
+      with:
+        name: python-package-distributions
+        path: dist/
+    - uses: pypa/gh-action-pypi-publish@release/v1
