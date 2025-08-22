@@ -402,8 +402,12 @@ class CollectorList(list):
     pass
 
 
+class BaseCollector:
+    pass
+
+
 def Collector():
-    class Collector:
+    class Collector(BaseCollector):
         """Syntactic sugar to make collecting arbitrary data easier.
 
         See examples below for a clearer description. Having a simplified
@@ -464,9 +468,13 @@ def Collector():
 
         def __init__(self):
             # TODO: Fix 'help(self)' and other default attributes, see below.
-            super().__setattr__("__name__", "collector")
+            # super().__setattr__("__name__", "collector")
             super().__setattr__("__qualname__", "collector")
             super().__setattr__("__origin__", None)
+
+        @property
+        def __name__(self):
+            return "collector"
 
         def __getattr__(self, name: str):
             internal_name = f"-{name}"  # field with '-' is rarely user-defined
@@ -486,7 +494,7 @@ def Collector():
             return getattr(self, name)
 
         def __setattr__(self, name: str, value: Any) -> None:
-            if isinstance(value, CollectorList):
+            if isinstance(value, (CollectorList, BaseCollector)):
                 return super().__setattr__(name, value)  # initialize field
             getattr(self, name).append(value)
 
@@ -495,8 +503,9 @@ def Collector():
             keys = [
                 attr[1:]
                 for attr in d.keys()
-                if isinstance(d[attr], CollectorList) and len(d[attr]) != 0
+                if (isinstance(d[attr], CollectorList) and len(d[attr]) != 0)
             ]
+            keys += [attr for attr in d.keys() if (isinstance(d[attr], BaseCollector))]
             return keys
 
         def __repr__(self):
@@ -508,7 +517,7 @@ def Collector():
 collector = Collector()  # generic default for simple usage
 
 
-class FrozenCollector:
+class FrozenCollector(BaseCollector):
     """Frozen equivalent of Collector.
 
     Due to the need to override the properties of Collector, the Collector
@@ -552,7 +561,9 @@ class FrozenCollector:
         self.__attributes = collector._Collector__attributes()
         for key in self.__attributes:
             value = getattr(collector, key)
-            if copy:
+            if isinstance(value, BaseCollector):
+                value = FrozenCollector(value)
+            elif copy:
                 from copy import deepcopy
 
                 value = deepcopy(list(value))
@@ -562,7 +573,7 @@ class FrozenCollector:
         return f"FrozenCollector[{', '.join(self.__attributes)}]"
 
 
-class FrozenNumpyCollector:
+class FrozenNumpyCollector(BaseCollector):
     """Frozen equivalent of Collector, with numpy array values.
 
     Similar to 'FrozenCollector', but with attributes casted into numpy arrays
@@ -580,7 +591,11 @@ class FrozenNumpyCollector:
         else:
             self.__attributes = collector._FrozenCollector__attributes()
         for key in self.__attributes:
-            value = np.asarray(getattr(collector, key))
+            value = getattr(collector, key)
+            if isinstance(value, BaseCollector):
+                value = FrozenNumpyCollector(value)
+            else:
+                value = np.asarray(value)
             setattr(self, key, value)
 
     def __repr__(self):
