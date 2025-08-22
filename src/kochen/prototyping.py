@@ -37,6 +37,10 @@ class BlackHole:
 
 
 def lazy_import(name):
+    # Avoids duplicate module loading
+    if name in sys.modules:
+        return sys.modules[name]
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=UserWarning)
         spec = importlib.util.find_spec(name)

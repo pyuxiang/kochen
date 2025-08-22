@@ -145,7 +145,7 @@ def _version_str2tuple(version_str):
     if len(remainder) > 0:
         minor = remainder[0]
         if len(remainder) > 1:
-            patch = remainder[1]
+            patch = remainder[1].split("+")[0]  # remove local build version
     return tuple(map(int, (major, minor, patch)))
 
 
