@@ -1,4 +1,5 @@
 import numpy as np
+import numpy.typing as npt
 import scipy
 import scipy.optimize
 import scipy.stats.sampling
@@ -632,6 +633,40 @@ def split_by_condition(vs, cond):
             group.append(vs[i])
     data.append(group)
     return data
+
+
+def inrange(value, ranges: npt.ArrayLike) -> bool | npt.NDArray[np.bool_]:
+    """Checks if value falls within the set of ranges.
+
+    Ranges are inclusive of the bounds and should be monotonically increasing,
+    e.g. [(A, B), (C, D)] must satisfy all the following:
+
+        * A <= B <= D
+        * A <= C <= D
+
+    Args:
+        value: Any scalar value or ndarray.
+        ranges: Arraylike of shape Nx2.
+
+    Examples:
+        >>> ranges = [(1, 2), (1, 3), (4, 5)]
+        >>> array = np.array([0.1, 1.5, 2.0, 3.0, 3.5, 4.0, 5.1])
+        >>> inrange(array, ranges)
+        array([False,  True,  True,  True, False,  True, False])
+    """
+    # Check monotonicity
+    ranges = np.asarray(ranges)
+    if ranges.ndim != 2 or ranges.shape[1] != 2:
+        raise ValueError("'ranges' must be an Nx2 array-like.")
+    if not np.all(ranges[:, 1] >= ranges[:, 0]) or not np.all(
+        ranges[1:, :] >= ranges[:-1, :]
+    ):
+        raise ValueError("'ranges' must be monotonically increasing.")
+
+    bounds = ranges.T
+    left = np.searchsorted(bounds[0], value, "right")
+    right = np.searchsorted(bounds[1], value, "left")
+    return left > right
 
 
 version_cleanup()
