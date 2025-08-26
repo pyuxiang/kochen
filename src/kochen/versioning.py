@@ -129,6 +129,7 @@ __all__ = [
     "version",
     "search",
     "get_namespace_versioning",  # function versioning
+    "hey",
 ]
 
 logger = get_logger(__name__, level="info")
@@ -375,6 +376,60 @@ def version(version_str: str, namespace: Optional[str] = None):
     def helper(f):
         # Cache function in loader for dynamic calls
         fname = f.__name__
+
+        # Store all versioned functions
+        ns = __kochen_f_refmap.setdefault(namespace, {})
+        fmap = ns.setdefault(fname, SortedDict())
+        fmap[version_tuple] = f
+
+        # Cache latest compatible function
+        if version_tuple <= __kochen_requested_version:
+            ns = __kochen_f_cache.setdefault(namespace, {})
+            _, prev_ver = ns.setdefault(fname, (f, version_tuple))
+            if version_tuple > prev_ver:
+                ns[fname] = (f, version_tuple)  # override with later
+
+        return f
+
+    return helper
+
+
+def deprecated(version_str: str, namespace: Optional[str] = None):
+    """Decorator for indicating version of a function.
+
+    When the function is first called, the function is cached within
+    a global cacher.
+
+    For internal use within the 'kochen' library only.
+
+    Example:
+        >>> from kochen.versioning import version
+        >>> @version("0.2024.1")
+        ... def f():
+        ...     return "hello world!"
+
+    TODO:
+        See how to extend this to other libraries.
+
+        Problem is:
+            1. Need cumbersome method of deprecation + cumbersome pinning of functions
+               to current library.
+            2. Need to override __getattr__. Not very friendly...
+    """
+    # Convert to version tuple
+    version_tuple = _version_str2tuple(version_str)
+
+    def helper(f):
+        global hey
+        # Cache function in loader for dynamic calls
+        fname = f.__name__
+        module = f.__module__
+
+        # Special case
+        # TODO: Generalize this
+        if module.endswith(".deprec"):
+            module = module[:-7]
+            print(module)
 
         # Store all versioned functions
         ns = __kochen_f_refmap.setdefault(namespace, {})

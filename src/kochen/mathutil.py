@@ -6,6 +6,7 @@ import scipy.stats.sampling
 from uncertainties import unumpy as unp
 
 from kochen.versioning import get_namespace_versioning
+from kochen.versioning import deprecated
 
 version, version_cleanup, __getattr__ = get_namespace_versioning(__name__, globals())
 
@@ -590,7 +591,7 @@ def rejection_sampling(f, samples=100, support=(0, 1)):
     return result[:samples]
 
 
-@version("0.2024.3")
+@deprecated("0.2024.3")
 def rejection_sampling(f, samples=100, support=(0, 1)):
     """Performs rejection sampling for a continuous distribution.
 
