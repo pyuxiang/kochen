@@ -281,7 +281,10 @@ class ServerInternal:
         calls = sorted(k for k in calls if k not in self.auxiliary_calls)
         args = []
         if self.address != "127.0.0.1":
-            args.append(f"address='{get_ip_address()}'")
+            address = self.address
+            if self.address == "0.0.0.0":
+                address = get_ip_address()  # find any public-facing address
+            args.append(f"address='{address}'")
         if self.port != DEFAULT_PORT:
             args.append(f"port={self.port}")
         _ipport = ", ".join(args)
