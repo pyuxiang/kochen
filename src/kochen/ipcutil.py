@@ -364,6 +364,18 @@ class Server(ServerInternal):
 
         # Extract using the class to avoid triggering property getter calls
         cls = instance.__class__
+        if cls is str:
+            raise ValueError(
+                f"'{instance}' is of 'str' class which is likely "
+                "not intended for proxying."
+                " For IP addresses, use 'Server(address=...)'."
+            )
+        if cls in (bytes, int, float, bool):
+            raise ValueError(
+                f"'{instance}' is of '{cls.__name__}' class which is likely "
+                "not intended for proxying."
+            )
+
         prefix = "" if name is None else name
         for command, name, method in extract_methods(cls, prefix):
             f = self.__create_closure(instance, name, method)
