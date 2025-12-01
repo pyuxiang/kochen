@@ -1,3 +1,5 @@
+from typing import Optional
+
 import numpy as np
 import numpy.typing as npt
 import scipy
@@ -304,6 +306,73 @@ def find_dp(n):
         if diff < 1e-12:
             break
     return precision
+
+
+def round2(
+    number,
+    ndigits: Optional[int] = None,
+    sf: Optional[int] = None,
+    dp: Optional[int] = None,
+):
+    """Performs rounding with support for significant figures.
+
+    Stand-in replacement for in-built round, algorithm copied from [2].
+    Providing 'dp' or 'sf' rounds the values to their corresponding
+    decimal place or significant figure respectively.
+
+    Only one of the precision arguments, i.e. 'sf', 'dp', should be supplied.
+    'ndigits' is an alias to 'dp' to match with the signature of the in-built
+    round.
+
+    Examples:
+        # Decimal rounding (using in-built round)
+        >>> round(1)
+        1
+        >>> round(1, 2)
+        1
+        >>> round(1.0, 2)
+        1.0
+
+        # Significant figure rounding
+        >>> round(1234, sf=3)
+        1230
+        >>> round(1234.0, sf=4)
+        1234
+        >>> round(1234.56, sf=5)
+        1234.6
+        >>> round(-1234.56, sf=7)
+        -1234.56
+        >>> round(0.0123456, sf=5)
+        0.012346
+
+    References:
+        [1]: Original source, <https://stackoverflow.com/a/48812729>
+        [2]: Rounding as value, <https://stackoverflow.com/a/59888924>
+    """
+    # 'dp' overrides 'ndigits' keyword
+    if ndigits is not None and dp is None:
+        dp = ndigits
+
+    # Check if both sf and dp provided
+    if dp is not None and sf is not None:
+        raise ValueError(
+            "Both decimal place and significant figures cannot be supplied together"
+        )
+    if sf == 0:
+        raise ValueError("Significant figures cannot be zero.")
+
+    # Assume regular rounding behaviour if 'sf' not supplied
+    if sf is None:
+        return round(number, dp)
+
+    # Perform rounding
+    x = number
+    x_positive = np.abs(x) if (np.isfinite(x) & (x != 0)) else 10 ** (sf - 1)
+    mags = 10 ** (sf - 1 - np.floor(np.log10(x_positive)))
+    result = np.round(x * mags) / mags
+    if mags <= 1:
+        result = round(result)  # convert back to integer
+    return result
 
 
 def gc_product(*args, repeat=1):
