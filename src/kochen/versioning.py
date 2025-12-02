@@ -249,6 +249,10 @@ def _search_importline(path, depth=0, max_depth=MAX_IMPORTSEARCH_DEPTH):
             except (KeyError, AttributeError):
                 continue
 
+            # Ignore modules without filepath
+            if target is None:
+                continue
+
             # Continue traversal and terminate immediately upon completion
             result = _search_importline(target, depth + 1, max_depth)
             if result is not None:
