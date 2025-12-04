@@ -130,15 +130,50 @@ def reconstruct_schema(
     line,
     schema: Union[Iterable, Mapping, None] = None,
     default: Optional[Callable] = None,
-):
+) -> list:
+    # TODO: Mapping style schema
     if default is None:
         default = lambda x: x  # noqa: E731 (temporary stand-in)
+
     if schema is None:
         schema = [default] * len(line)
+
+    # Handle special schema
+    def convert_time_factory():
+        convert_time_day_overflow = (
+            0  # allow time conversions to cycle into the next day
+        )
+        convert_time_prevtime = dt.datetime(1900, 1, 1, 0, 0, 0)
+
+        def convert_time(s):
+            nonlocal convert_time_prevtime
+            nonlocal convert_time_day_overflow
+            result = dt.datetime.strptime(s, "%H%M%S")  # default date is 1 Jan 1900
+            if result < convert_time_prevtime:
+                convert_time_day_overflow += 1
+            convert_time_prevtime = result
+            result += dt.timedelta(days=convert_time_day_overflow)
+            return result
+
+        return convert_time
+
+    convert_time = convert_time_factory()
+
+    def convert_datetime(s):
+        return dt.datetime.strptime(s, "%Y%m%d_%H%M%S")
+
+    # Parse special (hardcoded) types
+    schema = list(schema)
+    for i, dtype in enumerate(schema):
+        if dtype is Datatype.TIME:
+            schema[i] = convert_time
+        elif dtype is Datatype.DATETIME:
+            schema[i] = convert_datetime
+
     return schema
 
 
-def _parse(data: str, delimiters: str = " \t"):
+def _parse(data: str, delimiters: str = " \t") -> list:
     data = re.sub(rf"[{delimiters}]+", " ", data)  # squash whitespace
     tokens = [line.strip() for line in data.split("\n")]
     tokens = [line.split(" ") for line in tokens if line != ""]
@@ -151,7 +186,7 @@ def _load(
     default: Optional[Callable] = None,
     delimiters: str = " \t",
     headers: Union[Iterable, None] = None,
-):
+) -> pl.DataFrame:
     sdata = _parse(data, delimiters)
     schema = reconstruct_schema(sdata[-1], schema, default)
 
@@ -182,7 +217,7 @@ def load(
     default: Optional[Callable] = None,
     delimiters: str = " \t",
     headers: Union[Iterable, None] = None,
-):
+) -> pl.DataFrame:
     with open(filename, "r", encoding="utf8") as f:
         data = f.read()
         result = _load(data, schema, default, delimiters, headers)
