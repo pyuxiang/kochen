@@ -5,6 +5,7 @@
 __all__ = ["pprint", "read_log"]
 
 import datetime as dt
+import enum
 import functools
 import json
 import pathlib
@@ -12,10 +13,13 @@ import pickle
 import re
 import sys
 from collections import defaultdict
-from typing import Optional, Type, Any
+from typing import Callable, Iterable, Mapping, Optional, Type, Any, Union
 
 import numpy as np
+import polars as pl
 import tqdm
+
+from kochen.lib.typing import PathLike
 
 # For pprint to accept NaN values
 NOVALUE = np.iinfo(np.int64).min
@@ -114,6 +118,75 @@ def pprint_progressbar(value, lower=0, upper=1, width=80):
         line += blocks[i - 1] * amt
     line += "\u258f"
     print(line)
+
+
+class Datatype(enum.Enum):
+    DATE = enum.auto()
+    DATETIME = enum.auto()
+    TIME = enum.auto()
+
+
+def reconstruct_schema(
+    line,
+    schema: Union[Iterable, Mapping, None] = None,
+    default: Optional[Callable] = None,
+):
+    if default is None:
+        default = lambda x: x  # noqa: E731 (temporary stand-in)
+    if schema is None:
+        schema = [default] * len(line)
+    return schema
+
+
+def _parse(data: str, delimiters: str = " \t"):
+    data = re.sub(rf"[{delimiters}]+", " ", data)  # squash whitespace
+    tokens = [line.strip() for line in data.split("\n")]
+    tokens = [line.split(" ") for line in tokens if line != ""]
+    return tokens
+
+
+def _load(
+    data: str,
+    schema: Union[Iterable, Mapping, None] = None,
+    default: Optional[Callable] = None,
+    delimiters: str = " \t",
+    headers: Union[Iterable, None] = None,
+):
+    sdata = _parse(data, delimiters)
+    schema = reconstruct_schema(sdata[-1], schema, default)
+
+    result = []
+    for line in sdata:
+        try:
+            # Equivalent to Pandas's 'applymap'
+            # Note this cannot be run in parallel due to 'convert_time' implementation
+            row = [f(v) for f, v in zip(schema, line) if f is not None]
+            result.append(row)
+        except Exception:
+            # If fails, assume is string header
+            if headers is None:
+                headers = [v for f, v in zip(schema, line) if f is not None]
+
+    if headers is None:
+        headers = [f"column_{x + 1}" for x in range(len(sdata[-1]))]
+
+    # Merge columns
+    result = list(zip(*result))
+    items = dict(zip(headers, result))
+    return pl.DataFrame(items)
+
+
+def load(
+    filename: PathLike,
+    schema: Union[Iterable, Mapping, None] = None,
+    default: Optional[Callable] = None,
+    delimiters: str = " \t",
+    headers: Union[Iterable, None] = None,
+):
+    with open(filename, "r", encoding="utf8") as f:
+        data = f.read()
+        result = _load(data, schema, default, delimiters, headers)
+    return result
 
 
 def read_log(filename: str, schema: list, merge: bool = False):

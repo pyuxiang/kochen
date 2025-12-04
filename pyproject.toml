@@ -23,6 +23,7 @@ classifiers = [
 dependencies = [
   "numpy",
   "sortedcontainers",
+  "typing_extensions",
 ]
 
 [project.optional-dependencies]
