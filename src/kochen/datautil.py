@@ -7,6 +7,7 @@ __all__ = ["pprint", "read_log"]
 import datetime as dt
 import enum
 import functools
+import io
 import json
 import pathlib
 import pickle
@@ -130,12 +131,16 @@ def reconstruct_schema(
     line,
     schema: Union[list, dict, None] = None,
     default: Union[Callable, Datatype, None] = None,
+    has_datetime_field: bool = True,
 ) -> list:
     """
     'default' has special meanings depending on whether a mapping or sequence
     was provided for 'schema'. For mapping-based 'schema', default behaviour
     is to ignore the field. For sequence-based 'schema', default behaviour is
     to not parse the field (i.e. remain as str).
+
+    'has_datetime_field' is only effective for mapping-based schema or if no
+    schema is specified, to avoid confusion!
     """
 
     # For mapping-based schema, default to ignore
@@ -143,15 +148,21 @@ def reconstruct_schema(
     def identity(x):
         return x
 
+    def generate_default_schema():
+        schema = [default] * len(line)
+        if has_datetime_field:
+            schema[0] = Datatype.DATETIME
+        return schema
+
     if default is None:
         default = None if isinstance(schema, dict) else identity
 
     if schema is None:
-        schema = [default] * len(line)
+        schema = generate_default_schema()
 
     # Convert mapping to list
     if isinstance(schema, dict):
-        _schema = [default] * len(line)
+        _schema = generate_default_schema()
         for idx, convertor in schema.items():
             _schema[idx] = convertor
         schema = _schema
@@ -212,9 +223,10 @@ def _load(
     default: Union[Callable, Datatype, None] = None,
     delimiters: str = " \t",
     headers: Union[Iterable, None] = None,
+    has_datetime_field: bool = True,
 ) -> pl.DataFrame:
     sdata = _parse(data, delimiters)
-    schema = reconstruct_schema(sdata[-1], schema, default)
+    schema = reconstruct_schema(sdata[-1], schema, default, has_datetime_field)
 
     result = []
     for line in sdata:
@@ -243,11 +255,37 @@ def load(
     default: Union[Callable, Datatype, None] = None,
     delimiters: str = " \t",
     headers: Union[Iterable, None] = None,
+    has_datetime_field: bool = True,
 ) -> pl.DataFrame:
     with open(filename, "r", encoding="utf8") as f:
         data = f.read()
-        result = _load(data, schema, default, delimiters, headers)
+        result = _load(data, schema, default, delimiters, headers, has_datetime_field)
     return result
+
+
+def dump(
+    f: Union[PathLike, io.TextIOBase],
+    *fields,
+    delimiter: str = "\t",
+    has_datetime_field: bool = True,
+):
+    is_filename = isinstance(f, PathLike)
+    if is_filename:
+        f = open(f, "a", encoding="utf8")
+
+    # Generate field entries
+    fields = list(fields)
+    if has_datetime_field:
+        now = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+        fields = [now] + fields
+
+    # Write
+    line = delimiter.join(fields) + "\n"
+    f.write(line)  # type: ignore
+
+    # Optionally close
+    if is_filename:
+        f.close()  # type: ignore
 
 
 def read_log(filename: str, schema: list, merge: bool = False):
