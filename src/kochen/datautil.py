@@ -13,7 +13,7 @@ import pickle
 import re
 import sys
 from collections import defaultdict
-from typing import Callable, Iterable, Mapping, Optional, Type, Any, Union
+from typing import Callable, Iterable, Optional, Type, Any, Union
 
 import numpy as np
 import polars as pl
@@ -121,22 +121,47 @@ def pprint_progressbar(value, lower=0, upper=1, width=80):
 
 
 class Datatype(enum.Enum):
-    DATE = enum.auto()
     DATETIME = enum.auto()
     TIME = enum.auto()
+    IGNORE = enum.auto()
 
 
 def reconstruct_schema(
     line,
-    schema: Union[Iterable, Mapping, None] = None,
-    default: Optional[Callable] = None,
+    schema: Union[list, dict, None] = None,
+    default: Union[Callable, Datatype, None] = None,
 ) -> list:
-    # TODO: Mapping style schema
+    """
+    'default' has special meanings depending on whether a mapping or sequence
+    was provided for 'schema'. For mapping-based 'schema', default behaviour
+    is to ignore the field. For sequence-based 'schema', default behaviour is
+    to not parse the field (i.e. remain as str).
+    """
+
+    # For mapping-based schema, default to ignore
+    # For sequence-based schema, default to not parse
+    def identity(x):
+        return x
+
     if default is None:
-        default = lambda x: x  # noqa: E731 (temporary stand-in)
+        default = None if isinstance(schema, dict) else identity
 
     if schema is None:
         schema = [default] * len(line)
+
+    # Convert mapping to list
+    if isinstance(schema, dict):
+        _schema = [default] * len(line)
+        for idx, convertor in schema.items():
+            _schema[idx] = convertor
+        schema = _schema
+
+    # Check schema length
+    schema = list(schema)
+    if len(schema) != len(line):
+        raise ValueError(
+            f"Schema has wrong length: expected {len(line)}, got {len(schema)}"
+        )
 
     # Handle special schema
     def convert_time_factory():
@@ -163,12 +188,13 @@ def reconstruct_schema(
         return dt.datetime.strptime(s, "%Y%m%d_%H%M%S")
 
     # Parse special (hardcoded) types
-    schema = list(schema)
     for i, dtype in enumerate(schema):
         if dtype is Datatype.TIME:
             schema[i] = convert_time
         elif dtype is Datatype.DATETIME:
             schema[i] = convert_datetime
+        elif dtype is Datatype.IGNORE:
+            schema[i] = None
 
     return schema
 
@@ -182,8 +208,8 @@ def _parse(data: str, delimiters: str = " \t") -> list:
 
 def _load(
     data: str,
-    schema: Union[Iterable, Mapping, None] = None,
-    default: Optional[Callable] = None,
+    schema: Union[list, dict, None] = None,
+    default: Union[Callable, Datatype, None] = None,
     delimiters: str = " \t",
     headers: Union[Iterable, None] = None,
 ) -> pl.DataFrame:
@@ -213,8 +239,8 @@ def _load(
 
 def load(
     filename: PathLike,
-    schema: Union[Iterable, Mapping, None] = None,
-    default: Optional[Callable] = None,
+    schema: Union[list, dict, None] = None,
+    default: Union[Callable, Datatype, None] = None,
     delimiters: str = " \t",
     headers: Union[Iterable, None] = None,
 ) -> pl.DataFrame:
