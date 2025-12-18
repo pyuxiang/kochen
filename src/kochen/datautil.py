@@ -131,7 +131,7 @@ def reconstruct_schema(
     line,
     schema: Union[list, dict, None] = None,
     default: Union[Callable, Datatype, None] = None,
-    has_datetime_field: bool = True,
+    has_datetime_field: Union[bool, None] = None,
 ) -> list:
     """
     'default' has special meanings depending on whether a mapping or sequence
@@ -142,37 +142,6 @@ def reconstruct_schema(
     'has_datetime_field' is only effective for mapping-based schema or if no
     schema is specified, to avoid confusion!
     """
-
-    # For mapping-based schema, default to ignore
-    # For sequence-based schema, default to not parse
-    def identity(x):
-        return x
-
-    def generate_default_schema():
-        schema = [default] * len(line)
-        if has_datetime_field:
-            schema[0] = Datatype.DATETIME
-        return schema
-
-    if default is None:
-        default = None if isinstance(schema, dict) else identity
-
-    if schema is None:
-        schema = generate_default_schema()
-
-    # Convert mapping to list
-    if isinstance(schema, dict):
-        _schema = generate_default_schema()
-        for idx, convertor in schema.items():
-            _schema[idx] = convertor
-        schema = _schema
-
-    # Check schema length
-    schema = list(schema)
-    if len(schema) != len(line):
-        raise ValueError(
-            f"Schema has wrong length: expected {len(line)}, got {len(schema)}"
-        )
 
     # Handle special schema
     def convert_time_factory():
@@ -197,6 +166,44 @@ def reconstruct_schema(
 
     def convert_datetime(s):
         return dt.datetime.strptime(s, "%Y%m%d_%H%M%S")
+
+    # For mapping-based schema, default to ignore
+    # For sequence-based schema, default to not parse
+    def identity(x):
+        return x
+
+    def generate_default_schema():
+        schema = [default] * len(line)
+        # Guess datetime, check if parseable
+        if has_datetime_field is None:
+            try:
+                convert_datetime(line[0])
+                schema[0] = Datatype.DATETIME
+            except Exception:
+                pass
+        elif has_datetime_field:
+            schema[0] = Datatype.DATETIME
+        return schema
+
+    if default is None:
+        default = None if isinstance(schema, dict) else identity
+
+    if schema is None:
+        schema = generate_default_schema()
+
+    # Convert mapping to list
+    if isinstance(schema, dict):
+        _schema = generate_default_schema()
+        for idx, convertor in schema.items():
+            _schema[idx] = convertor
+        schema = _schema
+
+    # Check schema length
+    schema = list(schema)
+    if len(schema) != len(line):
+        raise ValueError(
+            f"Schema has wrong length: expected {len(line)}, got {len(schema)}"
+        )
 
     # Parse special (hardcoded) types
     for i, dtype in enumerate(schema):
@@ -223,7 +230,7 @@ def _load(
     default: Union[Callable, Datatype, None] = None,
     delimiters: str = " \t",
     headers: Union[Iterable, None] = None,
-    has_datetime_field: bool = True,
+    has_datetime_field: Union[bool, None] = None,
 ) -> pl.DataFrame:
     sdata = _parse(data, delimiters)
     schema = reconstruct_schema(sdata[-1], schema, default, has_datetime_field)
@@ -255,7 +262,7 @@ def load(
     default: Union[Callable, Datatype, None] = None,
     delimiters: str = " \t",
     headers: Union[Iterable, None] = None,
-    has_datetime_field: bool = True,
+    has_datetime_field: Union[bool, None] = None,
 ) -> pl.DataFrame:
     with open(filename, "r", encoding="utf8") as f:
         data = f.read()
@@ -370,7 +377,7 @@ def read_log(filename: str, schema: list, merge: bool = False):
                 # Note this cannot be run in parallel due to 'convert_time' implementation
                 row = [f(v) for f, v in zip(_maps, row) if f is not None]
                 _data.append(row)
-            except:  # noqa: E722
+            except Exception:
                 # If fails, assume is string header
                 if not is_header_logged:
                     _headers = [v for f, v in zip(_maps, row) if f is not None]
@@ -483,7 +490,7 @@ def filecache(
                     table = json.load(cache, object_hook=data_decoder)
             else:
                 raise RuntimeError()
-        except:  # noqa: E722
+        except Exception:
             return None
 
         if not isinstance(table, dict):
