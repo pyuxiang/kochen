@@ -123,7 +123,10 @@ def plot_3d(data, xlabel, ylabel, zlabel, mask=None, reverse_x=False, reverse_y=
 
     # TODO(Justin): See if can do something with this too...
     z_argmax = np.argmax(zs)
-    data_argmax = dict([(k,np.array(v)[mask][z_argmax]) for k,v in data.items()])
+    if mask is None:
+        data_argmax = dict([(k,np.array(v)[z_argmax]) for k,v in data.items()])
+    else:
+        data_argmax = dict([(k,np.array(v)[mask][z_argmax]) for k,v in data.items()])
     x_max = data_argmax[xlabel]
     y_max = data_argmax[ylabel]
     z_max = data_argmax[zlabel]
