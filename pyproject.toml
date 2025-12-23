@@ -24,6 +24,8 @@ dependencies = [
   "numpy",
   "sortedcontainers",
   "typing_extensions",
+  "polars",
+  "tqdm",
 ]
 
 [project.optional-dependencies]
