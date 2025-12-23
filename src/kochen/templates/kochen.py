@@ -30,12 +30,16 @@ import kochen.logging
 
 logger = kochen.logging.get_logger(__name__)
 
+
 def main():
+    # fmt: off
     def make_parser(help_verbosity: int = 1):
-        adv = kochen.scriptutil.get_help_descriptor(help_verbosity >= 2)  # for basic customization
-        advv = kochen.scriptutil.get_help_descriptor(help_verbosity >= 3)  # for advanced customization
-        advvv = kochen.scriptutil.get_help_descriptor(help_verbosity >= 4)  # for internal testing
-        parser = kochen.scriptutil.generate_default_parser(__doc__, display_config=help_verbosity >= 2)
+        adv = kochen.scriptutil.get_help_descriptor(help_verbosity >= 2)  # noqa: PLR2004, F841
+        advv = kochen.scriptutil.get_help_descriptor(help_verbosity >= 3)  # noqa: PLR2004, F841
+        advvv = kochen.scriptutil.get_help_descriptor(help_verbosity >= 4)  # noqa: PLR2004, F841
+        parser = kochen.scriptutil.generate_default_parser(
+            __doc__, display_config=help_verbosity >= 2,  # noqa: PLR2004
+        )
 
         # Boilerplate
         pgroup = parser.add_argument_group("display/configuration")
@@ -64,12 +68,14 @@ def main():
         #     "--ARG",
         #     help="")
         return parser
+    # fmt: on
 
     # Parse arguments and configure logging
     parser = make_parser()
     args = kochen.scriptutil.parse_args_or_help(parser, parser_func=make_parser)
     kwargs = {}
-    if args.quiet: kwargs["stream"] = None
+    if args.quiet:
+        kwargs["stream"] = None
     kochen.logging.set_default_handlers(logger, file=args.logging, **kwargs)
     kochen.logging.set_logging_level(logger, args.verbosity)
     logger.debug("%s", args)
