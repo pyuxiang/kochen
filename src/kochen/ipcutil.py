@@ -1,8 +1,21 @@
 #!/usr/bin/env python3
 """Opens socket for intercomputer communication.
 
+No external dependencies!
+
 A how-to guide can be found at '../../docs/ipcutil.md'. Note also that this
 module requires Python >3.8, though I can't remember the exact reason why.
+
+Note:
+    I remember seeing some other library where the person used a message
+    communication protocol (ZeroMQ? RabbitMQ?) to pass on serial messages
+    instead. This method is appropriate under two conditions: (1) low latency
+    network (<ms), (2) IO-limited. Where there is significant back-and-forth
+    over the serial channel, querying the serial device locally is more ideal.
+
+    Main disadvantage being a need for a Python class to be defined for
+    message passing, although this is typically already available. Currently
+    using polling (i.e. one response per query), pushing not implemented (yet).
 
 References:
     1. <https://zeromq.org/>
@@ -25,6 +38,7 @@ import time
 import warnings
 from multiprocessing.connection import Listener, Client as _Client
 from pydoc import pager
+from typing import Optional
 
 # Set up logging facilities if not available
 logger = logging.getLogger(__name__)
@@ -228,7 +242,7 @@ class ServerInternal:
     def has_registered(self, name: str) -> bool:
         return name in self.registered_calls
 
-    def register(self, f, name: str = None) -> bool:
+    def register(self, f, name: Optional[str] = None) -> bool:
         """Registers function with the server, and returns success state.
 
         If the function is a lambda, a name should be provided for it.
@@ -244,7 +258,7 @@ class ServerInternal:
         """
         # Extract name via function inspection
         if name is None:
-            name = f.__name__
+            name = str(f.__name__)
             if name == "<lambda>":
                 raise ValueError("Name must be given for anonymous functions.")
 
@@ -256,11 +270,11 @@ class ServerInternal:
         self.registered_calls[name] = f
         return True
 
-    def unregister(self, name_or_func) -> bool:
+    def unregister(self, f) -> bool:
         """Removes registered function from server, and returns success state."""
-        name = name_or_func
-        if inspect.isfunction(name_or_func):
-            name = name_or_func.__name__
+        name = f
+        if inspect.isfunction(f):
+            name = f.__name__
             if name == "<lambda>":
                 raise ValueError(
                     "Name assigned to anonymous function must be provided."
@@ -367,7 +381,8 @@ class Server(ServerInternal):
                 proxy = (proxy, None)
             self.register(*proxy)
 
-    def register(self, func_or_instance, name: str = None):
+    def register(self, f, name: Optional[str] = None) -> bool:
+        func_or_instance = f
         if inspect.isfunction(func_or_instance):
             return super().register(func_or_instance, name)
 
@@ -398,8 +413,10 @@ class Server(ServerInternal):
             if command != name and name not in self.registered_props:
                 self.registered_props.add(name)
         self._instances.add(instance)
+        return True
 
-    def unregister(self, name_or_func_or_instance):
+    def unregister(self, f) -> bool:
+        name_or_func_or_instance = f
         if isinstance(name_or_func_or_instance, str) or inspect.isfunction(
             name_or_func_or_instance
         ):
@@ -417,6 +434,7 @@ class Server(ServerInternal):
             if command != name and name in self.registered_props:
                 self.registered_props.remove(name)
         self._instances.remove(instance)
+        return True
 
     def get_help_server(self):
         text = super().get_help_server()
@@ -454,7 +472,7 @@ class Server(ServerInternal):
             signature.bind(instance, *args, **kwargs)  # emits TypeError if no match
             return method(instance, *args, **kwargs)
 
-        f.__signature__ = signature
+        f.__signature__ = signature  # pyright: ignore[reportFunctionMemberAccess]
         f.__doc__ = doc
         f.__name__ = name
         f.__qualname__ = f"{instance.__class__.__name__}.{name}"
@@ -485,16 +503,19 @@ class ClientInternal:
         there is available data to be read. Note connection needs to be
         initialized first via 'connect()'.
         """
+        assert self.connection is not None
         if not blocking and not self.connection.poll():
             return None
         return self.connection.recv()
 
     def write(self, command: str, *args, **kwargs):
         """Writes to connection directly."""
+        assert self.connection is not None
         self.connection.send([command, args, kwargs])
 
     def drain(self):
         """Clears connection message queue."""
+        assert self.connection is not None
         while self.connection.poll():
             self.connection.recv()
 
@@ -548,6 +569,7 @@ class ClientInternal:
         if server and self.connect():
             self.write("close")  # terminate server
         if not self.is_closed():
+            assert self.connection is not None
             self.connection.close()  # terminate client
 
     # APPLICATION LAYER
@@ -723,7 +745,7 @@ def Client(*args, **kwargs):
                 signature.bind(None, *args, **kwargs)  # emits TypeError if no match
                 return getattr(self.__client, name)(*args, **kwargs)
 
-            f.__signature__ = signature
+            f.__signature__ = signature  # pyright: ignore[reportFunctionMemberAccess]
             f.__doc__ = doc
             f.__name__ = name
             f.__qualname__ = f"{cls.__name__}.{name}"
