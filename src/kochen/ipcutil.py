@@ -20,6 +20,7 @@ import inspect
 import logging
 import socket
 import sys
+import threading
 import time
 import warnings
 from multiprocessing.connection import Listener, Client as _Client
@@ -106,6 +107,8 @@ class ServerInternal:
         pickle-encoding, so almost arbitrary Python objects can be transmitted.
     """
 
+    listener: Listener
+
     def __init__(self, *, address: str = "*", port: int = DEFAULT_PORT, secret=None):
         self.address = parse_ip_address(address)
         self.port = port
@@ -127,23 +130,33 @@ class ServerInternal:
             logger.setLevel(logging.DEBUG)
             logger.addHandler(handler)
 
-    def run(self, help: bool = True) -> None:
+    def run(self, help: bool = True, threaded: bool = False) -> None:
         """Starts the server."""
-        if help:
-            self.help_server()
-        try:
-            self.restart = True
-            while self.restart:
-                self.listener = Listener((self.address, self.port), authkey=self.secret)
-                logger.info("Server listening...")
-                connection = self.listener.accept()  # blocking
-                logger.info("Connected: %s", self.listener.last_accepted)
-                try:
-                    self._r(connection)
-                finally:
-                    self.listener.close()
-        except KeyboardInterrupt:
-            logger.info("Server interrupted.")
+
+        def helper():
+            if help:
+                self.help_server()
+            try:
+                self.restart = True
+                while self.restart:
+                    self.listener = Listener(
+                        (self.address, self.port), authkey=self.secret
+                    )
+                    logger.info("Server listening...")
+                    connection = self.listener.accept()  # blocking
+                    logger.info("Connected: %s", self.listener.last_accepted)
+                    try:
+                        self._r(connection)
+                    finally:
+                        self.listener.close()
+            except KeyboardInterrupt:
+                logger.info("Server interrupted.")
+
+        if threaded:
+            thread = threading.Thread(target=helper)
+            thread.start()
+        else:
+            helper()
 
     def _r(self, connection) -> None:
         """Main loop while connection is maintained. Do not call directly."""
