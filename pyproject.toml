@@ -22,16 +22,24 @@ classifiers = [
   "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-  "numpy",
+  "configargparse",
   "sortedcontainers",
   "typing_extensions",
-  "polars",
-  "tqdm",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest",
+]
+
+# Submodule dependencies
+datautil = ["numpy", "polars", "tqdm"]
+fitutil = ["numpy"]
+mathutil = ["numpy", "scipy", "uncertainties"]
+all = [
+  "kochen[datautil]",
+  "kochen[fitutil]",
+  "kochen[mathutil]",
 ]
 
 [tool.hatch.version]
