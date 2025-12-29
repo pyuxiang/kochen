@@ -117,7 +117,7 @@ import importlib.metadata
 import re
 import sys
 from functools import partial
-from typing import Optional
+from typing import Optional, Set
 
 from sortedcontainers import SortedDict  # for O(logN) bisection methods
 
@@ -135,7 +135,9 @@ logger = get_logger(__name__, level="info")
 
 TARGET_LIBRARY = "kochen"
 MAX_IMPORTSEARCH_DEPTH = 3
-SEARCHED_MODULES = set()  # cache visited modules, since imports are also a DAG
+SEARCHED_MODULES: Set[str] = (
+    set()
+)  # cache visited modules, since imports are also a DAG
 RE_VERSION_STRING = re.compile(r"#.*\sv([0-9]+)\.?([0-9]+)?\.?([0-9]+)?")
 
 
@@ -217,7 +219,7 @@ def _search_importline(path, depth=0, max_depth=MAX_IMPORTSEARCH_DEPTH):
 
         # Only need to identify the base library of the module
         for n in node.names:
-            targetmodule = module if module else n.name
+            targetmodule: str = module if module else n.name
             basemodule = targetmodule.split(".")[0]
 
             # Get line number where the version information is expected,
@@ -225,15 +227,17 @@ def _search_importline(path, depth=0, max_depth=MAX_IMPORTSEARCH_DEPTH):
             # Note: 'node.end_lineno' is only available from Python 3.8 [2]
             if basemodule == TARGET_LIBRARY:
                 # Find importing module name
-                for name, module in sys.modules.items():
-                    if hasattr(module, "__file__") and module.__file__ == path:
+                name = None
+                for name, _module in sys.modules.items():
+                    if hasattr(_module, "__file__") and _module.__file__ == path:
                         break
-                lineno = node.lineno  # 1-indexed
-                with open(path) as file:
-                    lines = file.readlines()
-                while lines[lineno - 1].endswith("\\\n"):
-                    lineno += 1
-                return name, path, lineno
+                if name is not None:
+                    lineno = node.lineno  # 1-indexed
+                    with open(path) as file:
+                        lines = file.readlines()
+                    while lines[lineno - 1].endswith("\\\n"):
+                        lineno += 1
+                    return name, path, lineno
 
             # Cache modules
             if targetmodule in SEARCHED_MODULES:
@@ -307,7 +311,7 @@ def _get_requested_version():
         if result is not None:
             break
     else:
-        logger.warn(f"'{TARGET_LIBRARY}' could not be found")
+        logger.warning(f"'{TARGET_LIBRARY}' could not be found")
         return installed_version
 
     # Import line found: read from file
@@ -323,7 +327,7 @@ def _get_requested_version():
     requested_version = _parse_importline(targetline, installed_version)
     requested_version_str = _version_tuple2str(requested_version)
     if requested_version > installed_version:
-        logger.warn(
+        logger.warning(
             "Requested version is '%s', but '%s' is installed.",
             requested_version_str,
             installed_version_str,
@@ -488,14 +492,15 @@ def get_namespace_versioning(namespace, globals_ref=None):
     return version, cleanup, search
 
 
-def search_versioned(fname, version, namespace=None):
+def _search_versioned(fname, version, namespace=None):
     """Returns desired function cached."""
+    raise NotImplementedError
     # Check if function already cached
     if fname in __kochen_f_cache:
         return __kochen_f_cache[fname]
 
     # Search for function
-    __kochen_f_refmap = []
+    __kochen_f_refmap = {}
     if (ns := __kochen_f_refmap.get(namespace)) is None or (
         fmap := ns.get(fname)
     ) is None:

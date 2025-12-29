@@ -8,7 +8,7 @@ Some workflows:
 Run tests:
 
 ```
-python -m pytest
+uvx --isolated --with-editable .[all] pytest
 ```
 
 Install library:

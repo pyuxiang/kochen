@@ -58,3 +58,4 @@ ignore = [
 include = ["src"]
 exclude = []
 typeCheckingMode = "standard"
+reportRedeclaration = false
