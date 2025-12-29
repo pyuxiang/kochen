@@ -12,8 +12,9 @@ keywords = [
   "script", "boilerplate", "recipe",
 ]
 classifiers = [
-  "Development Status :: 2 - Pre-Alpha",
+  "Development Status :: 3 - Alpha",
   "Intended Audience :: Education",
+  "Intended Audience :: Science/Research",
   "License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)",
   "Natural Language :: English",
   "Operating System :: OS Independent",
