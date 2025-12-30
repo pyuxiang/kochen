@@ -36,10 +36,12 @@ dev = [
 datautil = ["numpy", "polars", "tqdm"]
 fitutil = ["numpy"]
 mathutil = ["numpy", "scipy", "uncertainties"]
+plotutil = ["matplotlib"]
 all = [
   "kochen[datautil]",
   "kochen[fitutil]",
   "kochen[mathutil]",
+  "kochen[plotutil]",
 ]
 
 [tool.hatch.version]
@@ -49,6 +51,9 @@ source = "versioningit"
 requires = ["hatchling", "versioningit"]
 build-backend = "hatchling.build"
 
+[tool.ruff]
+extend-exclude = ["src/kochen/recipe"]
+
 [tool.ruff.lint]
 ignore = [
   "F811",  # redefinitions expected for back-compatibility
@@ -56,6 +61,6 @@ ignore = [
 
 [tool.pyright]
 include = ["src"]
-exclude = []
+exclude = ["src/kochen/recipe"]
 typeCheckingMode = "standard"
 reportRedeclaration = false
