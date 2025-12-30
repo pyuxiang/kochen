@@ -61,7 +61,7 @@ def pprint(
     # Checks if progress bar is supplied - if so, update that instead
     if pbar:
         line = " ".join(array)
-        pbar.set_description(line)
+        pbar.set_description(line)  # pyright: ignore[reportArgumentType]  # Type[class] method issue
 
     # Prints line delimited to console
     elif stdout:
@@ -218,9 +218,9 @@ def reconstruct_schema(
 
 
 def _parse(data: str, delimiters: str = " \t") -> list:
-    data = re.sub(rf"[{delimiters}]+", " ", data)  # squash whitespace
+    data = re.sub(rf"[{delimiters}]+", "\x00", data)  # squash whitespace
     tokens = [line.strip() for line in data.split("\n")]
-    tokens = [line.split(" ") for line in tokens if line != ""]
+    tokens = [line.split("\x00") for line in tokens if line != ""]
     return tokens
 
 
@@ -399,15 +399,15 @@ class DataEncoder(json.JSONEncoder):
     def _dt2str(x):
         return x.strftime("%Y%m%d_%H%M%S.%f")
 
-    def default(self, obj):
-        if isinstance(obj, dt.datetime):
-            return {"_dt": obj.strftime("%Y%m%d_%H%M%S.%f")}
-        if isinstance(obj, np.ndarray):
-            if len(obj) > 0 and isinstance(obj[0], dt.datetime):
-                return {"_dt_np": list(map(DataEncoder._DT2STR, obj))}
+    def default(self, o):
+        if isinstance(o, dt.datetime):
+            return {"_dt": o.strftime("%Y%m%d_%H%M%S.%f")}
+        if isinstance(o, np.ndarray):
+            if len(o) > 0 and isinstance(o[0], dt.datetime):
+                return {"_dt_np": list(map(DataEncoder._dt2str, o))}
             else:
-                return {"_np": obj.tolist()}
-        return super().default(obj)
+                return {"_np": o.tolist()}
+        return super().default(o)
 
 
 def data_decoder(dct):
@@ -783,9 +783,19 @@ class FrozenNumpyCollector(BaseCollector):
 
     Similar to 'FrozenCollector', but with attributes casted into numpy arrays
     for downstream processing.
+
+    Bypass allowed for dictionaries of lists, e.g.
+    FrozenNumpyCollector({"col1": [1, 2], "col2": [2, 3]})
     """
 
     def __init__(self, collector):
+        # Dictionary bypass to avoid copies
+        if isinstance(collector, dict):
+            self.__attributes = list(collector.keys())
+            for attr, value in collector.items():
+                setattr(self, attr, np.asarray(value))
+            return
+
         if not hasattr(collector, "_Collector__attributes") and not hasattr(
             collector, "_FrozenCollector__attributes"
         ):
@@ -805,3 +815,24 @@ class FrozenNumpyCollector(BaseCollector):
 
     def __repr__(self):
         return f"FrozenNumpyCollector[{', '.join(self.__attributes)}]"
+
+
+class CollectorUtil:
+    @staticmethod
+    def freeze(collector: BaseCollector, np: bool = True) -> BaseCollector:
+        cls = FrozenNumpyCollector if np else FrozenCollector
+        return cls(collector)
+
+    @staticmethod
+    def from_pl(df: pl.DataFrame, freeze: bool = True) -> BaseCollector:
+        if freeze:
+            d = {}
+            for column in df.columns:
+                d[column] = df[column].to_numpy()
+            return FrozenNumpyCollector(d)
+
+        c = Collector()
+        for column in df.columns:
+            series = df[column].to_list()
+            getattr(c, column).extend(series)
+        return c
