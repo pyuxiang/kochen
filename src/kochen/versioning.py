@@ -147,22 +147,55 @@ Version2Func: TypeAlias = Dict[Version, Callable]
 
 
 def _version_str2tuple(version_str: str) -> Version:
+    """Extract version string and parse as a version tuple.
+
+    'version_str' must follow exactly the format: "([0-9]+).?([0-9]+)?.?([0-9]+)?".
+    This will be used to parse version strings specified in the library, as
+    well as deprecated functions.
+
+    This is not the actual function used for import line parsing: for that,
+    see '_parse_importline()'.
+
+    Examples:
+        >>> _version_str2tuple("10")
+        (10, 0, 0)
+        >>> _version_str2tuple("10.20")
+        (10, 20, 0)
+        >>> _version_str2tuple("10.20.30")
+        (10, 20, 30)
+
+    Note:
+        Old versioning system used to rely on build string to convey
+        installation date, e.g. v0.1.2+20240921. This has been deprecated
+        in favor of a simple (major, minor, patch) for PyPI-compatibility.
+
+    TODO:
+        This function may eventually require a change to convert "10" to
+        "10.9999.9999" instead, to mark as a version cap. To review after
+        implementing '@deprecated'.
+    """
     major, *remainder = version_str.split(".")
     minor = patch = 0
     if len(remainder) > 0:
         minor = remainder[0]
         if len(remainder) > 1:
-            patch = remainder[1].split("+")[0]  # remove local build version
+            patch = remainder[1]
     return (int(major), int(minor), int(patch))
 
 
-def _version_tuple2str(version_tuple):
+def _version_tuple2str(version_tuple: Version) -> str:
+    """Convert a valid version 3-tuple into its string equivalent.
+
+    Examples:
+        >>> _version_tuple2str((1, 2, 3))
+        '1.2.3'
+    """
     return ".".join(map(str, version_tuple))
 
 
-# Dynamically retrieve library version information
-installed_version_str = importlib.metadata.version(TARGET_LIBRARY)
-installed_version = _version_str2tuple(installed_version_str)
+# Dynamically retrieve version of currently installed library
+_installed_version_str = importlib.metadata.version(TARGET_LIBRARY)
+installed_version = _version_str2tuple(_installed_version_str)
 
 
 def _search_importline(path, depth=0, max_depth=MAX_IMPORTSEARCH_DEPTH):
@@ -268,8 +301,18 @@ def _search_importline(path, depth=0, max_depth=MAX_IMPORTSEARCH_DEPTH):
                 return result
 
 
-def _parse_importline(line, installed_version):
-    """Extracts requested version from the line."""
+def _parse_importline(line, installed_version) -> Version:
+    """Extracts requested version from the library import line.
+
+    The 'installed_version' value is a fallback if no version string is found.
+
+    Examples:
+        >>> _parse_importline("import kochen", "v9")
+        'v9'
+        >>> _parse_importline("import kochen", "v9")
+        'v9'
+
+    """
     if "#" not in line or (result := RE_VERSION_STRING.search(line)) is None:
         return installed_version
 
@@ -279,7 +322,7 @@ def _parse_importline(line, installed_version):
         minor = 0
     if patch is None:
         patch = 0
-    requested_version = tuple(map(int, (major, minor, patch)))
+    requested_version = (int(major), int(minor), int(patch))
     return requested_version
 
 
@@ -335,7 +378,7 @@ def _get_requested_version():
         logger.warning(
             "Requested version is '%s', but '%s' is installed.",
             requested_version_str,
-            installed_version_str,
+            _installed_version_str,
         )
 
     currency = ""
