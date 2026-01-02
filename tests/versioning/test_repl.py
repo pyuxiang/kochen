@@ -19,7 +19,7 @@ def test_repl_import_pinned():
 
     # Generic version pinning
     version = subprocess.check_output(
-        r'python -c "import kochen  # v0.10.20; print(kochen.__version__)"',
+        'python -c "import kochen  # v0.10.20\nprint(kochen.__version__)"',
         shell=True,
     )
     version = version.decode().strip()
@@ -27,7 +27,7 @@ def test_repl_import_pinned():
 
     # Malformed spaces during pinning
     version = subprocess.check_output(
-        r'python -c "import kochen#v0.10.20  ; print(kochen.__version__)"',
+        'python -c "import kochen#v0.10.20  \n print(kochen.__version__)"',
         shell=True,
     )
     version = version.decode().strip()
