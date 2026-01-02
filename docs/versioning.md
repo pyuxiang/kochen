@@ -121,6 +121,93 @@ if main_module.__package__ == "_pyrepl":
 return  # no REPL
 ```
 
+## Version pinning syntax
+
+See [here](https://docs.python.org/3/reference/grammar.html) for the full import statement grammar,
+with the import statements reproduced below. Valid name identifiers can be found in
+[here](https://docs.python.org/3/reference/lexical_analysis.html#names-identifiers-and-keywords),
+specifically `[_\w][_\w\d]*` (non-ASCII identifiers are technically also supported as per
+[PEP-3131](https://peps.python.org/pep-3131/),
+but will require more complex regex parsing; unicode identifiers can easily be separately assigned in
+follow-up reassignments).
+
+<details>
+<summary>Import statement grammar</summary>
+
+```
+import_stmt:
+    | import_name
+    | import_from
+
+import_name:
+    | 'import' dotted_as_names
+import_from:
+    | 'from' ('.' | '...')* dotted_name 'import' import_from_targets
+    | 'from' ('.' | '...')+ 'import' import_from_targets
+import_from_targets:
+    | '(' import_from_as_names [','] ')'
+    | import_from_as_names !','
+    | '*'
+import_from_as_names:
+    | ','.import_from_as_name+
+import_from_as_name:
+    | NAME ['as' NAME ]
+
+dotted_as_names:
+    | ','.dotted_as_name+
+dotted_as_name:
+    | dotted_name ['as' NAME ]
+dotted_name:
+    | dotted_name '.' NAME
+    | NAME
+```
+
+All of the above is supported during version pinning,
+with the exception of relative "import_from" (starting with a dot),
+since this library is not intended to be addressed as a local library.
+
+</details>
+
+The expected syntax for imports are:
+
+```python
+import kochen  # v0.1.2
+import kochen as k  # v0.1.2
+import kochen.versioning  # v0.1.2
+from kochen.versioning import *  # v0.1.2
+from kochen import versioning  # v0.1.2
+from kochen import (  # v0.1.2
+    versioning,
+)
+```
+
+Note that the version pin must be located on the same line as the library being referenced.
+This is because the code context provided during stack lookup does not consider the AST,
+but simply the first line of the executing statement.
+These version pinning syntaxes are thus not accommodated for to reduce pinning complexity
+(not to mention some of these are weird rules to follow, with the exception of the last one):
+
+```python
+import \
+    kochen as k  # v0.1.2; NO PINNING
+from kochen \
+    import versioning  # v0.1.2; NO PINNING
+from kochen import (
+    versioning,
+)  # v0.1.2; NO PINNING
+```
+
+We also disallow multi-library imports on the same line because of the potential confusion.
+Version pinning is also comment sensitive.
+
+```python
+import kochen, logging  # v0.1.2; NO PINNING
+import logging  # import kochen  # v0.1.2; NO PINNING
+```
+
+Note also that line continuations cannot precede a comment.
+
+
 ## Deprecated method
 
 Old method worked by performing AST recursive depth-first search,

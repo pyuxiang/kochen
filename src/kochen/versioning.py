@@ -142,7 +142,8 @@ SEARCHED_MODULES: Set[str] = (
 RE_VERSION_IMPORT = re.compile(
     r"""
     import\s+  # import statement
-    kochen[._\d\w]*\s*  # module or submodule name
+    kochen[._\w\d]*\s*  # module or submodule name
+    (?:as\s*[_\w\d]*\s*)?  # alias
     \#.*?  # non-greedy match comment text
     v([0-9]+)\.?([0-9]+)?\.?([0-9]+)?  # e.g. 'v83' / 'v83.104' / 'v83.104.92'
     """,
@@ -151,9 +152,9 @@ RE_VERSION_IMPORT = re.compile(
 RE_VERSION_IMPORTFROM = re.compile(
     r"""
     from\s+  # from...import statement
-    kochen[.\d\w]*\s+  # module or submodule name
+    kochen[._\w\d]*\s+  # module or submodule name
     import\s+
-    [,_\d\w\s]*  # includes e.g. 'versioning as v2, blah'
+    [_\w\d\s,()*]*  # see tests for allowable syntax
     \#.*?  # non-greedy match comment text
     v([0-9]+)\.?([0-9]+)?\.?([0-9]+)?  # e.g. 'v83' / 'v83.104' / 'v83.104.92'
     """,
@@ -221,9 +222,16 @@ installed_version = _version_str2tuple(_installed_version_str)
 
 def _parse_version_pin(line: str) -> Optional[Version]:
     """Extracts requested version from the library import line."""
-    if "#" not in line:
+    idx_comment = line.find("#")
+    idx_lib = line.find("kochen")
+    if idx_comment == -1 or idx_lib == -1:
         return None
 
+    # Exclude cases like: "import logging  # import kochen  # v0.1.2",
+    if idx_comment < idx_lib:
+        return None
+
+    # Search for version pin
     if (result := RE_VERSION_IMPORT.search(line)) is None and (
         result2 := RE_VERSION_IMPORTFROM.search(line)
     ) is None:
