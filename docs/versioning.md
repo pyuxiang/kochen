@@ -1,20 +1,63 @@
 # Versioning
 
-Old method worked by performing AST recursive depth-first search,
-starting from the Python entrypoint (i.e. retrieved via
-'sys.modules["__main__"]') using '_search_importline()'. This is
-obviously very inefficient, and will break under edge cases, since
-it is not known a-priori how deep the library import statement is
-nested.
+## Control flow trace
 
+Here is a simplified control flow chart when Python is first run, and then with REPL activated. This is obtained by tracing the source.
+Relevant files for Python 3.8:
 
-Generally does not work in certain REPLs (e.g. CPython) because the.
+* [Modules/main.c](https://github.com/python/cpython/blob/39b2f82717a69dde7212bc39b673b0f55c99e6a3/Modules/main.c)
+* [Python/pythonrun.c](https://github.com/python/cpython/blob/39b2f82717a69dde7212bc39b673b0f55c99e6a3/Python/pythonrun.c)
+* [Parser/parsetok.c](https://github.com/python/cpython/blob/39b2f82717a69dde7212bc39b673b0f55c99e6a3/Parser/parsetok.c)
 
-This can be tested by printing out the call stack during the version request, e.g.
+```
+(Modules/main.c) Py_RunMain
+└ pymain_run_python
+  ├ pymain_import_readline  # imports GNU readline library (or abstraction of it)
+  ├ pymain_run_command      # for example; specialization depending on entry type (e.g. command, module, stdin)
+  │ └ (Python/pythonrun.c) PyRun_SimpleStringFlags          # run string with compiler flags + init main and globals/locals
+  │   └ PyRun_StringFlags                                   # + arena malloc
+  │     ├ PyParser_ASTFromStringObject                      # string -> module
+  │     │ ├ (Parser/parsetok.c) PyParser_ParseStringObject
+  │     │ │ ├ PySys_Audit                                   # raise 'compile' audit event
+  │     │ │ ├ PyTokenizer_FromUTF8                          # string -> tokens
+  │     │ │ └ parsetok                                      # tokens -> node
+  │     │ └ PyAST_FromNodeObject                            # node -> module
+  │     └ run_mod
+  │       ├ PyAST_CompileObject                             # module -> code object
+  │       ├ PySys_Audit                                     # raise 'exec' audit event (run bytecode)
+  │       └ run_eval_code_obj
+  │         └ (Python/ceval.c) PyEval_EvalCode              # frame created here
+  │
+  └ pymain_repl
+    └ (Python/pythonrun.c) PyRun_AnyFileFlags  # with <stdin> as file
+      └ PyRun_AnyFileExFlags
+        └ PyRun_InteractiveLoopFlags           # REPL starts here, if requested
+          └ PyRun_InteractiveOneObjectEx       # line execution
+            ├ PyParser_ASTFromFileObject       # file -> module
+            └ run_mod
+```
+
+Firstly, for Python <3.13, the C-based [readline GNU library](https://cgit.git.savannah.gnu.org/cgit/readline.git/tree/history.h)
+is used as backend to store history (before compiling REPL command into bytecode).
+This means the only sensible way to read the actual code context is to use the `readline` interface provided as a
+[builtin library](https://docs.python.org/3.8/library/readline.html#module-readline) (see also the
+[source](https://github.com/python/cpython/blob/3.8/Modules/readline.c#L693)).
+
+Secondly, for Python >=3.13, the REPL has a fancier interface based on PyPy's REPL (see [PEP-762](https://peps.python.org/pep-0762/)),
+and is stored in the new [`_pyrepl` package](https://github.com/python/cpython/blob/3.13/Lib/_pyrepl), together with a
+Python-based [`readline`](https://github.com/python/cpython/blob/3.13/Lib/_pyrepl/readline.py) wrapper.
+This makes accessing the history more consistent across different backends.
+
+Thirdly, unless Python was injected with [auditing hooks](https://docs.python.org/3/library/sys.html#auditing) prior to execution
+(via `sys.addaudithook((event_name: str, args: tuple) -> Any)`), there doesn't seem to be a method to retrieve
+the original source code supplied via stdin during the initial code call. This is because any source is immediately
+compiled into a code object before being passed for frame creation, and reads from stdin are not duplicated
+outside of the `readline` interface. This means that version pinning comments cannot be retrieved.
+
+### Call stack frames
+
+This is the call stack printed during the version request, e.g.
 in 'kochen.versioning._get_requested_version()'.
-The REPL directly pre-processes the executed lines by stripping all comments:
-this can be observed by inspecting the base of the call stack and noting the lengths
-of the source code does not include whitespace and comments.
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -40,102 +83,91 @@ of the source code does not include whitespace and comments.
 └─────────────────────────────────────────────┘
 ```
 
-Insted, we rely on
+We can observe the comments stripped from the executing code object, by
+inspecting the base of the call stack and noting the boundary lengths referencing
+the source code does not include whitespace and comments.
 
-## Tracing
+### IPython notes
 
-Here is a simplified control flow chart when Python REPL is triggered, obtained by tracing the source. There might be errors, so beware!
-Relevant files for Python 3.8:
+The `readline` interface is inactive in IPython, which opts for its own command history via `<module '__main__'>.In`.
+This in principle can be used to obtain the version pin...
 
-* [Modules/main.c](https://github.com/python/cpython/blob/39b2f82717a69dde7212bc39b673b0f55c99e6a3/Modules/main.c)
-* [Python/pythonrun.c](https://github.com/python/cpython/blob/39b2f82717a69dde7212bc39b673b0f55c99e6a3/Python/pythonrun.c)
-
-```
-(Modules/main.c) Py_RunMain
-└ pymain_run_python
-  ├ pymain_import_readline  # imports GNU readline library (or abstraction of it)
-  ├ pymain_run_stdin
-  └ pymain_repl
-    └ (Python/pythonrun.c) PyRun_AnyFileFlags  # with <stdin> file
-      └ PyRun_AnyFileExFlags
-        └ PyRun_InteractiveLoopFlags
-          └ PyRun_InteractiveOneObjectEx
-            └ run_mod
-              ├ PyAST_CompileObject
-              └ run_eval_code_obj
-                └ (Python/ceval.c) PyEval_EvalCode  # frame is created here
+```python
+# Edge case: IPython via "<module '__main__'>.In"
+main_module = sys.modules["__main__"]
+if hasattr(main_module, "In"):
+    line: str = main_module.In[-1]
+    version = _parse_version_pin(line)
+    if version is not None:
+        return version
 ```
 
-Of particular note is the use of C-based readline to store history, before storing the executing command as a file and compiling
-it into bytecode (which would have already been preprocessed). This means the only sensible way to read the actual code context is to use
-the `readline` interface provided as a [builtin library](https://docs.python.org/3.8/library/readline.html#module-readline).
-The readline seems to be called prior to any statement evaluation, and so can be used to directly pull the user history.
+...although in practice the stack trace already holds the code context, so this method is not needed.
 
-* GNU history: https://cgit.git.savannah.gnu.org/cgit/readline.git/tree/history.h
-  * Readline: https://github.com/python/cpython/blob/3.8/Modules/readline.c#L693
-* New _pyrepl package from 3.13 onwards: https://github.com/python/cpython/tree/main/Lib/_pyrepl
-  * Based on PyPy's REPL
-  * PEP 762: https://peps.python.org/pep-0762/
+### CPython notes
 
-REPL exclusion:
+REPL can be checked as follows:
 
+```python
+try:
+    main_module = sys.modules["__main__"]
+    path_main = main_module.__file__
+except (KeyError, AttributeError):
+    return  # REPL, CPython <3.13
 
-    # For Python <3.13, the REPL script does not belong to any package
-    try:
-        main_module = sys.modules["__main__"]
-        # print(main_module.In)
-        # https://stackoverflow.com/questions/1156023/print-current-call-stack-from-a-method-in-code
+if main_module.__package__ == "_pyrepl":
+    return  # REPL, CPython >=3.13
 
-        # hey = (inspect.stack(context=3), inspect.currentframe())
-        path_main = main_module.__file__
-    except (KeyError, AttributeError):  # ignore interactive sessions
-        return installed_version
+return  # no REPL
+```
 
-    # For Python >=3.13, the REPL is assigned to package '_pyrepl' and __file__
-    # is no longer unset.
-    if main_module.__package__ == "_pyrepl":
-        return installed_version
+## Deprecated method
 
+Old method worked by performing AST recursive depth-first search,
+starting from the Python entrypoint (i.e. retrieved via
+`sys.modules["__main__"]`) using '_search_importline()'. This is
+obviously very inefficient, and will break under edge cases, since
+it is not known a-priori how deep the library import statement is
+nested. Documenting it here for archival purposes:
 
-Search for the line reference to import of target library.
+* Searching code works by looking up currently imported modules of the root script
+  * Works because cascaded library imports are cached immediately after import
+  * Depth-first search with function signature `_search_importline(path, depth=0, max_depth=MAX_DEPTH)`
+* Traversal via the Abstract Syntax Tree, generated using the `ast` module
+  * Import-type node check with `isinstance(node, (ast.Import, ast.ImportFrom))`
+  * Line number can then be used to retrieve the source line directly
 
-    This code works by looking up currently imported modules of the root
-    script, and performing a depth-first search. The presence of this line
-    is guaranteed via 'sys.modules', since the cascaded library imports will be
-    cached, and the target library is likely not used as part of stdlib.
+Some relevant references:
 
-    To limit performance impact of this runtime search, import the library
-    in the root script directly. Future possible work in adding an import
-    comment for the target library automatically in the root script, possibly
-    with the use of the 'isort' module.
+1. AST traversal adapted from source, <https://stackoverflow.com/a/9049549>
+2. AST get_source_segment documentation, <https://docs.python.org/3.8/library/ast.html#ast.get_source_segment>
+3. Standard library module names, <https://docs.python.org/3/library/sys.html#sys.stdlib_module_names>
 
-    If the root script is an interactive session, this function will not
-    trigger (i.e. the latest version of the library will always be used).
+Source code for this style of version pin lookup is in `kochen:v0.2025.15`.
 
-    This function ideally will only be triggered once, since the imported
-    library will be frozen (so any subsequent import statements will use the
-    cached library instead). The use of the `ast` module for searching is
-    nominally ideal since the code traversal in running code should be close
-    to the manual traversal of the syntax tree, and import statements which
-    are part of comments are safely ignored.
+### Deprecated logging
 
-    Code adapted from an implementation from StackOverflow [1].
+```python
+logger.warning(f"'{TARGET_LIBRARY}' could not be found")
 
-    Max depth needs to be implemented since stdlib is treated like a regular
-    library, until the names are frozen from Python 3.10 onwards.
+# Feedback to user importing results
+requested_version = _parse_version_pin(targetline)
+requested_version_str = _version_tuple2str(requested_version)
+if requested_version > installed_version:
+    logger.warning(
+        "Requested version is '%s', but '%s' is installed.",
+        requested_version_str,
+        _installed_version_str,
+    )
 
-    References:
-        [1]: Code source, https://stackoverflow.com/a/9049549
-        [2]: AST get_source_segment documentation, https://docs.python.org/3.8/library/ast.html#ast.get_source_segment
-        [3]: Standard library module names, https://docs.python.org/3/library/sys.html#sys.stdlib_module_names
-
-
-def _search_importline(path, depth=0, max_depth=MAX_IMPORTSEARCH_DEPTH):
-
-isinstance(node, (ast.Import, ast.ImportFrom))
-
-Doing a cached DFS then looking up lineno for file.
-
-* Probably requires global import.
-
-isinstance(node, )
+currency = ""
+if requested_version == installed_version:
+    currency = "current:"
+elif requested_version > installed_version:
+    currency = "future:"
+logger.debug(
+    f"'{TARGET_LIBRARY}' loaded ({currency}v{requested_version_str}) "
+    f"from {module_name}:{lineno}"
+)
+return requested_version
+```

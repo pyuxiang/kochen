@@ -141,6 +141,7 @@ SEARCHED_MODULES: Set[str] = (
 )  # cache visited modules, since imports are also a DAG
 RE_VERSION_IMPORT = re.compile(
     r"""
+    import\s+  # import statement
     kochen[._\d\w]*\s*  # module or submodule name
     \#.*?  # non-greedy match comment text
     v([0-9]+)\.?([0-9]+)?\.?([0-9]+)?  # e.g. 'v83' / 'v83.104' / 'v83.104.92'
@@ -246,23 +247,34 @@ def _get_requested_version():
 
     Works by querying the current call stack to search for the relevant
     library import call. This works for all file-based imports, as well
-    as selected REPLs which store the import line directly in the stack.
+    as REPLs which cache import lines in their history files.
 
-    Known REPLs where this is known to not work are:
+    Notes:
+        There is a potential of pinning the version wrongly from a previous
+        history file, with the following reproduction steps:
 
-    Known to work are: IPython.
+          1. Python REPL is activated.
+          2. 'import kochen  # [VERSION_PIN]' is called.
+          3. REPL is exited without another command, e.g. via Ctrl-D EOF.
+          4. 'import kochen' is passed into new REPL via stdin, e.g.
+             'echo "import kochen" | python -i'
+
+        This arises from the use of last readline cached line from the
+        previous session. In practice the chances of this happening is slim,
+        especially since step 4 is very unusual, and we would still like
+        to preserve version pinning functionality for user REPL prototyping.
 
     See documentation at 'kochen/docs/versioning.md'.
     """
-    # Read from local history for REPLs
+    # Read from local history for CPython REPLs
     idx = readline.get_current_history_length()
-    line = readline.get_history_item(idx)
+    line: Optional[str] = readline.get_history_item(idx)
     if line is not None:
         version: Optional[Version] = _parse_version_pin(line)
         if version is not None:
             return version
 
-    # Look for library import line
+    # Look for file-based library import line
     stack = inspect.stack(context=1)
     try:
         for frame in reversed(stack):
@@ -282,31 +294,6 @@ def _get_requested_version():
             del frame
 
     return installed_version
-
-    """
-    logger.warning(f"'{TARGET_LIBRARY}' could not be found")
-
-    # Feedback to user importing results
-    requested_version = _parse_version_pin(targetline)
-    requested_version_str = _version_tuple2str(requested_version)
-    if requested_version > installed_version:
-        logger.warning(
-            "Requested version is '%s', but '%s' is installed.",
-            requested_version_str,
-            _installed_version_str,
-        )
-
-    currency = ""
-    if requested_version == installed_version:
-        currency = "current:"
-    elif requested_version > installed_version:
-        currency = "future:"
-    logger.debug(
-        f"'{TARGET_LIBRARY}' loaded ({currency}v{requested_version_str}) "
-        f"from {module_name}:{lineno}"
-    )
-    return requested_version
-    """
 
 
 requested_version = _get_requested_version()
