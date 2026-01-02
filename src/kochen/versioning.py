@@ -112,10 +112,10 @@ TODO:
     Fix import error when non-versioned and versioned functions coexists.
 """
 
-import ast
 import importlib.metadata
+import inspect
 import re
-import sys
+import readline
 from functools import partial
 from typing import Optional, Set, Dict, Tuple, Callable
 from typing_extensions import TypeAlias
@@ -139,7 +139,25 @@ MAX_IMPORTSEARCH_DEPTH = 3
 SEARCHED_MODULES: Set[str] = (
     set()
 )  # cache visited modules, since imports are also a DAG
-RE_VERSION_STRING = re.compile(r"#.*\sv([0-9]+)\.?([0-9]+)?\.?([0-9]+)?")
+RE_VERSION_IMPORT = re.compile(
+    r"""
+    kochen[._\d\w]*\s*  # module or submodule name
+    \#.*?  # non-greedy match comment text
+    v([0-9]+)\.?([0-9]+)?\.?([0-9]+)?  # e.g. 'v83' / 'v83.104' / 'v83.104.92'
+    """,
+    re.VERBOSE,
+)
+RE_VERSION_IMPORTFROM = re.compile(
+    r"""
+    from\s+  # from...import statement
+    kochen[.\d\w]*\s+  # module or submodule name
+    import\s+
+    [,_\d\w\s]*  # includes e.g. 'versioning as v2, blah'
+    \#.*?  # non-greedy match comment text
+    v([0-9]+)\.?([0-9]+)?\.?([0-9]+)?  # e.g. 'v83' / 'v83.104' / 'v83.104.92'
+    """,
+    re.VERBOSE,
+)
 
 Version: TypeAlias = Tuple[int, int, int]
 FuncVersion: TypeAlias = Tuple[Callable, Version]
@@ -154,7 +172,7 @@ def _version_str2tuple(version_str: str) -> Version:
     well as deprecated functions.
 
     This is not the actual function used for import line parsing: for that,
-    see '_parse_importline()'.
+    see '_parse_version_pin()'.
 
     Examples:
         >>> _version_str2tuple("10")
@@ -162,6 +180,8 @@ def _version_str2tuple(version_str: str) -> Version:
         >>> _version_str2tuple("10.20")
         (10, 20, 0)
         >>> _version_str2tuple("10.20.30")
+        (10, 20, 30)
+        >>> _version_str2tuple("10.20.30.post4+20250102")
         (10, 20, 30)
 
     Note:
@@ -198,123 +218,17 @@ _installed_version_str = importlib.metadata.version(TARGET_LIBRARY)
 installed_version = _version_str2tuple(_installed_version_str)
 
 
-def _search_importline(path, depth=0, max_depth=MAX_IMPORTSEARCH_DEPTH):
-    """Search for the line reference to import of target library.
+def _parse_version_pin(line: str) -> Optional[Version]:
+    """Extracts requested version from the library import line."""
+    if "#" not in line:
+        return None
 
-    This code works by looking up currently imported modules of the root
-    script, and performing a depth-first search. The presence of this line
-    is guaranteed via 'sys.modules', since the cascaded library imports will be
-    cached, and the target library is likely not used as part of stdlib.
-
-    To limit performance impact of this runtime search, import the library
-    in the root script directly. Future possible work in adding an import
-    comment for the target library automatically in the root script, possibly
-    with the use of the 'isort' module.
-
-    If the root script is an interactive session, this function will not
-    trigger (i.e. the latest version of the library will always be used).
-
-    This function ideally will only be triggered once, since the imported
-    library will be frozen (so any subsequent import statements will use the
-    cached library instead). The use of the `ast` module for searching is
-    nominally ideal since the code traversal in running code should be close
-    to the manual traversal of the syntax tree, and import statements which
-    are part of comments are safely ignored.
-
-    Code adapted from an implementation from StackOverflow [1].
-
-    Max depth needs to be implemented since stdlib is treated like a regular
-    library, until the names are frozen from Python 3.10 onwards.
-
-    References:
-        [1]: Code source, https://stackoverflow.com/a/9049549
-        [2]: AST get_source_segment documentation, https://docs.python.org/3.8/library/ast.html#ast.get_source_segment
-        [3]: Standard library module names, https://docs.python.org/3/library/sys.html#sys.stdlib_module_names
-    """
-
-    # Terminate search if too deep
-    if depth > max_depth:
-        return
-
-    # Parse file as AST
-    try:
-        with open(path) as file:
-            root = ast.parse(file.read(), path)
-    except (
-        UnicodeDecodeError,
-        FileNotFoundError,
-    ):  # ignore file if cannot decode properly
-        return
-
-    for node in ast.walk(root):
-        # Process node only if they are import statements
-        if isinstance(node, ast.Import):
-            module = None
-        elif isinstance(node, ast.ImportFrom):
-            module = node.module
-        else:
-            continue
-
-        # Only need to identify the base library of the module
-        for n in node.names:
-            targetmodule: str = module if module else n.name
-            basemodule = targetmodule.split(".")[0]
-
-            # Get line number where the version information is expected,
-            # by traversing down concatenated lines, i.e. '\\n'.
-            # Note: 'node.end_lineno' is only available from Python 3.8 [2]
-            if basemodule == TARGET_LIBRARY:
-                # Find importing module name
-                name = None
-                for name, _module in sys.modules.items():
-                    if hasattr(_module, "__file__") and _module.__file__ == path:
-                        break
-                if name is not None:
-                    lineno = node.lineno  # 1-indexed
-                    with open(path) as file:
-                        lines = file.readlines()
-                    while lines[lineno - 1].endswith("\\\n"):
-                        lineno += 1
-                    return name, path, lineno
-
-            # Cache modules
-            if targetmodule in SEARCHED_MODULES:
-                continue
-            else:
-                SEARCHED_MODULES.add(targetmodule)
-
-            # Ignore modules that have not been imported, or if not a file,
-            # e.g. stdlib or C extensions
-            try:
-                next_module = sys.modules[targetmodule]
-                target = next_module.__file__
-            except (KeyError, AttributeError):
-                continue
-
-            # Ignore modules without filepath
-            if target is None:
-                continue
-
-            # Continue traversal and terminate immediately upon completion
-            result = _search_importline(target, depth + 1, max_depth)
-            if result is not None:
-                return result
-
-
-def _parse_importline(line, installed_version) -> Version:
-    """Extracts requested version from the library import line.
-
-    The 'installed_version' value is a fallback if no version string is found.
-
-    Examples:
-        >>> _parse_importline("import kochen", "v9")
-        'v9'
-        >>> _parse_importline("import kochen", "v9")
-        'v9'
-
-    """
-    if "#" not in line or (result := RE_VERSION_STRING.search(line)) is None:
-        return installed_version
+    if (result := RE_VERSION_IMPORT.search(line)) is None and (
+        result2 := RE_VERSION_IMPORTFROM.search(line)
+    ) is None:
+        return None
+    if result is None:
+        result = result2  # pyright: ignore[reportPossiblyUnboundVariable]
 
     # Force lowest minor/patch for most conservative compatibility
     major, minor, patch = result.groups()
@@ -330,49 +244,50 @@ def _parse_importline(line, installed_version) -> Version:
 def _get_requested_version():
     """Returns the version requested by the import.
 
-    Works by starting the search from the main module run by the user,
-    and performing a depth-first search using '_search_importline'.
+    Works by querying the current call stack to search for the relevant
+    library import call. This works for all file-based imports, as well
+    as selected REPLs which store the import line directly in the stack.
 
-    TODO:
-        Update file with the current library version.
+    Known REPLs where this is known to not work are:
+
+    Known to work are: IPython.
+
+    See documentation at 'kochen/docs/versioning.md'.
     """
-    # For Python <3.13, the REPL script does not belong to any package
+    # Read from local history for REPLs
+    idx = readline.get_current_history_length()
+    line = readline.get_history_item(idx)
+    if line is not None:
+        version: Optional[Version] = _parse_version_pin(line)
+        if version is not None:
+            return version
+
+    # Look for library import line
+    stack = inspect.stack(context=1)
     try:
-        main_module = sys.modules["__main__"]
-        path_main = main_module.__file__
-    except (KeyError, AttributeError):  # ignore interactive sessions
-        return installed_version
+        for frame in reversed(stack):
+            context = frame.code_context
+            if context is None:
+                continue
 
-    # For Python >=3.13, the REPL is assigned to package '_pyrepl' and __file__
-    # is no longer unset.
-    if main_module.__package__ == "_pyrepl":
-        return installed_version
+            (line,) = context  # since only 1 line of context requested
+            version: Optional[Version] = _parse_version_pin(line)
+            if version is not None:
+                return version
 
-    # Abandon if no import line was found (can happen if the search depth
-    # is too shallow, in which case we try to search a bit deeper each time)
-    # We stop when we cannot find it with a depth of 3.
-    # TODO(2024-05-06):
-    #   Optimize this by ignoring known built-in and commonly-used libraries.
-    for max_depth in range(4):
-        SEARCHED_MODULES.clear()
-        result = _search_importline(path_main, max_depth=max_depth)
-        if result is not None:
-            break
-    else:
-        logger.warning(f"'{TARGET_LIBRARY}' could not be found")
-        return installed_version
+    finally:
+        # Remove references to frames to avoid reference cycles,
+        # see <https://docs.python.org/3/library/inspect.html#inspect.FrameInfo>
+        for frame in stack:
+            del frame
 
-    # Import line found: read from file
-    module_name, path, lineno = result
-    with open(path, "r+") as file:
-        lines = file.readlines()
-        targetline = lines[lineno - 1].rstrip("\n")
+    return installed_version
+
+    """
+    logger.warning(f"'{TARGET_LIBRARY}' could not be found")
 
     # Feedback to user importing results
-    # The stated version number is used regardless, for use in editable
-    # package installations for testing new features (rather than
-    # falling back to the installed version).
-    requested_version = _parse_importline(targetline, installed_version)
+    requested_version = _parse_version_pin(targetline)
     requested_version_str = _version_tuple2str(requested_version)
     if requested_version > installed_version:
         logger.warning(
@@ -391,6 +306,7 @@ def _get_requested_version():
         f"from {module_name}:{lineno}"
     )
     return requested_version
+    """
 
 
 requested_version = _get_requested_version()
