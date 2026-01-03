@@ -134,7 +134,6 @@ __all__ = [
 
 logger = get_logger(__name__, level="info")
 
-TARGET_LIBRARY = "kochen"
 MAX_IMPORTSEARCH_DEPTH = 3
 SEARCHED_MODULES: Set[str] = (
     set()
@@ -157,6 +156,12 @@ RE_VERSION_IMPORTFROM = re.compile(
     [_\w\d\s,()*]*  # see tests for allowable syntax
     \#.*?  # non-greedy match comment text
     v([0-9]+)\.?([0-9]+)?\.?([0-9]+)?  # e.g. 'v83' / 'v83.104' / 'v83.104.92'
+    """,
+    re.VERBOSE,
+)
+RE_VERSION_LIB = re.compile(
+    r"""
+    ^([0-9]+)\.?([0-9]+)?\.?([0-9]+)?
     """,
     re.VERBOSE,
 )
@@ -196,13 +201,11 @@ def _version_str2tuple(version_str: str) -> Version:
         "10.9999.9999" instead, to mark as a version cap. To review after
         implementing '@deprecated'.
     """
-    major, *remainder = version_str.split(".")
-    minor = patch = 0
-    if len(remainder) > 0:
-        minor = remainder[0]
-        if len(remainder) > 1:
-            patch = remainder[1]
-    return (int(major), int(minor), int(patch))
+    result = RE_VERSION_LIB.search(version_str)
+    assert result is not None, "Error parsing library version: check git tag format!"
+    version = tuple((0 if n is None else int(n)) for n in result.groups())
+    assert len(version) == 3
+    return version
 
 
 def _version_tuple2str(version_tuple: Version) -> str:
@@ -213,11 +216,6 @@ def _version_tuple2str(version_tuple: Version) -> str:
         '1.2.3'
     """
     return ".".join(map(str, version_tuple))
-
-
-# Dynamically retrieve version of currently installed library
-_installed_version_str = importlib.metadata.version(TARGET_LIBRARY)
-installed_version = _version_str2tuple(_installed_version_str)
 
 
 def _parse_version_pin(line: str) -> Optional[Version]:
@@ -232,21 +230,16 @@ def _parse_version_pin(line: str) -> Optional[Version]:
         return None
 
     # Search for version pin
-    if (result := RE_VERSION_IMPORT.search(line)) is None and (
-        result2 := RE_VERSION_IMPORTFROM.search(line)
-    ) is None:
-        return None
-    if result is None:
-        result = result2  # pyright: ignore[reportPossiblyUnboundVariable]
+    if (result := RE_VERSION_IMPORT.search(line)) is None:
+        if (_result := RE_VERSION_IMPORTFROM.search(line)) is None:
+            return None
+        result = _result
 
     # Force lowest minor/patch for most conservative compatibility
-    major, minor, patch = result.groups()
-    if minor is None:
-        minor = 0
-    if patch is None:
-        patch = 0
-    requested_version = (int(major), int(minor), int(patch))
-    return requested_version
+    # i.e. major.minor.patch
+    version = tuple((0 if n is None else int(n)) for n in result.groups())
+    assert len(version) == 3
+    return version
 
 
 # Execute the search for the import line
@@ -276,11 +269,12 @@ def _get_requested_version():
     """
     # Read from local history for CPython REPLs
     idx = readline.get_current_history_length()
-    line: Optional[str] = readline.get_history_item(idx)
-    if line is not None:
-        version: Optional[Version] = _parse_version_pin(line)
-        if version is not None:
-            return version
+    if idx > 0:
+        line: Optional[str] = readline.get_history_item(idx)
+        if line is not None:
+            version: Optional[Version] = _parse_version_pin(line)
+            if version is not None:
+                return version
 
     # Look for file-based library import line
     stack = inspect.stack(context=1)
@@ -304,8 +298,9 @@ def _get_requested_version():
     return installed_version
 
 
+# Dynamically retrieve version of currently installed library
+installed_version = _version_str2tuple(importlib.metadata.version("kochen"))
 requested_version = _get_requested_version()
-__kochen_requested_version = requested_version
 
 
 ################
@@ -351,7 +346,7 @@ def version(version_str: str, namespace: Optional[str] = None):
         fmap[version_tuple] = f
 
         # Cache latest compatible function
-        if version_tuple <= __kochen_requested_version:
+        if version_tuple <= requested_version:
             ns = __kochen_f_cache.setdefault(namespace, {})
             _, prev_ver = ns.setdefault(fname, (f, version_tuple))
             if version_tuple > prev_ver:
@@ -402,7 +397,7 @@ def deprecated(version_str: str, namespace: Optional[str] = None):
         fmap[version_tuple] = f
 
         # Cache latest compatible function
-        if version_tuple <= __kochen_requested_version:
+        if version_tuple <= requested_version:
             ns = __kochen_f_cache.setdefault(namespace, {})
             _, prev_ver = ns.setdefault(fname, (f, version_tuple))
             if version_tuple > prev_ver:
