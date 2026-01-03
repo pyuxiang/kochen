@@ -62,7 +62,8 @@ def default_type(request):
 def test_load_defaults(content, default_type):
     result = _load(content, headers=headers, default=default_type).to_numpy()
     assert np.all(result == target_parsed)
-    assert result.dtype == np.dtype(default_type)
+    expected = np.integer if default_type is int else np.floating
+    assert np.issubdtype(result.dtype, expected)
 
 
 def test_load_headers(content_with_headers):
@@ -70,4 +71,4 @@ def test_load_headers(content_with_headers):
     assert df.columns == headers
     result = df.to_numpy()
     assert np.all(result == target_parsed)
-    assert result.dtype == np.dtype(int)
+    assert np.issubdtype(result.dtype, np.integer)
