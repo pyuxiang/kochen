@@ -25,6 +25,7 @@ dependencies = [
   "configargparse",
   "sortedcontainers",
   "typing_extensions",
+  "pyreadline3; platform_system == 'Windows'",
 ]
 
 [project.optional-dependencies]
