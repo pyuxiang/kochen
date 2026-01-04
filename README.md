@@ -1,116 +1,172 @@
-# Boilerplate library
+# kochen
 
-Pain point: Repetitive coding of the same functionality, which often involves doing the same Google searches.
-Really a list of recipes for consolidation.
+Primarily a library of personal scripts and handy boilerplate, for scientific environments.
 
-Some workflows:
+This library is additionally designed for [strong backward-compatibility](#strong-backward-compatibility): old scripts dependent on functionality in older library versions can still run, simply by performing a soft version pin in the script (whereas, traditionally, older versions of the library itself needs to be installed).
 
-Run tests:
+Licensed under GPLv2-or-later, because free software is best left open.
 
-```
-uvx --isolated --with-editable .[all] pytest
-```
+## Installation
 
-Install library:
+Requires Python 3.8+ (versions below 3.8 often fail with modern tooling as of 2025).
 
 ```
-pip install -e .
+pip install kochen
 ```
 
-Uninstall library:
+The base installation has very minimal dependencies. To use certain submodules that introduce additional dependencies, specify them as an extra:
+
+* `datautil`: For data storage and parsing.
+* `fitutil`: For curve fitting.
+* `mathutil`: For general math manipulation.
+* `plotutil`: For plotting.
 
 ```
-python setup.py develop -u
+pip install kochen[datautil,fitutil]
 ```
 
-## Design rationale
+Or just install them all:
 
-This is partly spurred by my usage of convenience scripts in the context of an experimental physics laboratory,
-with the following usage observations:
+```
+pip install kochen[all]
+```
 
-**Problem**:
-Scripts are commonly archived for reference, either for reuse or for referencing data collection strategies. Old scripts tend to break from outdated API.
+## Versioning
 
-* **Solution**: Ensure that the library is strongly back-compatible with old functionality,
-    not just via version-control, but every commit should be back-compatible.
-* **Problem**: Functions that share the same name are essentially overridden
-    (no signature polymorphism).
-* **Problem**: Functions being used may become opaque to the user, e.g. when using an IDE
-    which can perform static declaration lookups, dynamic assignment of functionality (especially under a different alias) can lead to difficulties in usage.
-* **Anti-pattern**: Avoid declaring functions with different names to differentiate minute
-    behavioural changes. This can quickly pollute the library namespace.
-* **Solution**: Stick to the same function names as much as possible, and clearly define
-    the function contract. Best if a static type checker is used to enforce contractual obligations. Where functions are likely deprecated, throw out one (and only one) warning during initial script invocation.
-* **Possible solution**: Pre-compile currently used library into current directory, so that
-    library references change from global reference to local reference.
-* **Problem**: Precompilation and duplication of libraries can lead to bloated software size
-    and excessive duplication in a version-controlled environment. This also makes usage of
-    updated libraries in an old environment difficult.
-* **Possible solution**: Use of decorators to mark the version of certain functions.
-    This mark ought to be representative of the development order of the library, i.e. older
-    commits to the library should have older marks (perhaps a datetime). Individual scripts should keep track of which functions it should be calling, perhaps as a version pinning
-    comment if no such comment is initially detected.
-    Calling of newer functionality should still be supported, i.e. forward-compatibility.
-* **Anti-pattern**: Marking of functions by shelving them within subdirectory corresponding
-    to their version number should be avoided. This poses issues when (1) cross-referencing
-    similar but competing implementations, (2) developer overhead from choosing directories.
-
-**Problem**: Old scripts may have missing nested directory dependencies.
-
-* **Solution**:
-    Package all required functionality in a single library. Where not possible, pull the
-    library functions into a version-control and/or a centralized environment.
-* **Anti-pattern**: Functionality that are frequently updated and
-    cannot be reasonably maintained
-    (e.g. porting of `numpy` functions is not feasible long-term - will
-    eventually deviate from updated implementations) should be delegated to third-party libraries.
-* **Anti-pattern**: Avoid deploying of library as a standalone
-
-**Problem**: Older API may depend on older implementations of third-party libraries.
-
-* **Anti-pattern**:
-    Developer could document which libraries the functions were written for, and
-    throw warnings when libraries invoked do not match those specified by function.
-    This however increases documentation overhead (grows with size of library),
-    and may not necessarily extend to later releases which may be compatible.
-* **Possible solution**:
-    Provide suggestion of possible version conflict during a third-party library dependency call.
-* **Problem**:
-    Wrong diagnosis can occur, e.g. errors due to buggy implementation of third-party functionality.
-* **Solution**:
-    Not solved.
-
-**Problem**: Scripts referencing libraries deployed in a central networked repository may
-    break when connection to said network is lost. Even more so for this glue library.
-
-* **Solution**: Avoid performing `git clone ... && pip install -e .` workflows, especially
-    over a network. Where possible, enforce either `pip install git+...` or `pip install [PYPI]` workflows instead.
-* **Possible solution**: For locally developed third-party dependencies, rely on virtual
-    file systems (that cache contents and update dynamically whenever a change is detected),
-    or prepare mirrors (i.e. defer to local library if central repository cannot be accessed).
-
-Still a work-in-progress!
-
-----
-
-Some newer updates after a long lull on implementing the deprecation method.
-Firstly, there seems to be some proposal [PEP723](https://peps.python.org/pep-0723/) floating around that are still provisional as of 2023-11-30 (looks like [PEP722](https://peps.python.org/pep-0722/) has been rejected in favor of PEP723). PEP723 suggests to have a following code block for embedding `pyproject.toml` in single-file scripts (arguably important for users who are not necesarily familiar with installing dependencies). Looks like this:
+This library implements soft-versioning by means of version pinning in the script itself (how cool is that!). This prints `'latest'` without version pinning:
 
 ```python
-# /// pyproject
-# [run]
-# requires-python = ">=3.11"
-# dependencies = [
-#   "requests<3",
-#   "rich",
-# ]
-# ///
+import kochen.sampleutil
+print(kochen.sampleutil.foo())
 ```
 
-Note this does not actually fix the problem of having conflicting library versions. We want full backwards compatibility, as far as this library is concerned (hard to control versions on other dependencies, which is the whole point of trying to have this library self-contained).
+and prints `'v0.2025.8'` with version pinning, all without downgrading the library:
 
-Had a realization that library versioning should not be controlled by `git`, which limits applicability in cases where the library files are directly copied, or where `git` was not used to clone the repository in the first place. Need to somehow embed the version that is used by the script, hopefully automagically. This looks like a possible method: [Method 1](https://stackoverflow.com/questions/45684307/get-source-script-details-similar-to-inspect-getmembers-without-importing-the) and [Method 2](https://stackoverflow.com/questions/34491808/how-to-get-the-current-scripts-code-in-python) and [Method 3](https://stackoverflow.com/questions/427453/how-can-i-get-the-source-code-of-a-python-function).
+```python
+import kochen.sampleutil  # v0.2025.8
+print(kochen.sampleutil.foo())
+```
 
-Some goals:
+## Usage
 
-* Backward compatibility only up till Py3.6, because the lab
+Most of the useful functionality is parked in the following submodules:
+`datautil`, `mathutil`, `ipcutil`, `scriptutil`.
+
+```python
+import kochen.mathutil
+kochen.mathutil.generate_simplex(...)
+```
+
+Some commonly used features are listed below.
+
+### ipcutil
+
+Client/Server for proxying Python instances over TCP ports.
+
+```python
+# server.py
+from kochen.ipcutil import Server
+from S15lib.instruments.powermeter import Powermeter
+
+pm = Powermeter(...)
+pm = Server(pm, address="192.168.1.2", port=3000)
+pm.run()
+
+# client.py
+from kochen.ipcutil import Client
+from S15lib.instruments.powermeter import Powermeter
+
+pm = Client(Powermeter, address="192.168.1.2", port=3000)
+print(pm.voltage)
+```
+
+### datautil
+
+Data logging and reconstruction:
+
+```python
+from kochen.datautil import pprint
+
+filename = "pv_curve.log"
+pprint("volt_V", "power_W", "comment", out=filename)
+pprint(1, 3, "first_line", out=filename)
+pprint(1.5, 9, "second_line", out=filename)
+#  volt_V power_W comment
+#       1       3 first_line
+#     1.5       9 second_line
+
+print(load(filename, schema=[float, float, str]))
+# shape: (2, 3)
+# ┌────────┬─────────┬─────────────┐
+# │ volt_V ┆ power_W ┆ comment     │
+# │ ---    ┆ ---     ┆ ---         │
+# │ f64    ┆ f64     ┆ str         │
+# ╞════════╪═════════╪═════════════╡
+# │ 1.0    ┆ 3.0     ┆ first_line  │
+# │ 1.5    ┆ 9.0     ┆ second_line │
+# └────────┴─────────┴─────────────┘
+```
+
+Data aggregation:
+
+```python
+from kochen.datautil import Collector
+
+c = Collector()
+c.indices, c.signals = (1, 2)
+c.indices, c.signals = (3, 4)
+c.indices, c.signals = (6, 7)
+
+print(c.indices)  # [1, 3, 6]
+```
+
+Cache backed by file:
+
+```python
+import time
+from kochen.datautil import filecache
+
+@filecache(path="mycache", backend="json")
+def initialize(duration):
+    time.sleep(duration)
+    return duration
+
+print(initialize(1))  # 1 (sleeps for 1s)
+print(initialize(1))  # 1 (no sleep)
+
+with open("mycache") as f:
+    print(f.read())  # {"initialize": {"((1,), frozenset())": 1}}
+```
+
+### template
+
+Initialize a quick script boilerplate at `MYSCRIPT.py`:
+
+```
+python -m kochen.template MYSCRIPT
+```
+
+## Others
+
+### Strong backward-compatibility?
+
+Maybe not as strong as its proper definition implies (since it depends on the user properly deprecating functions in the first place), but it mostly does the job as advertised.
+
+Unlike typical software engineering where application or library packages are created, one-off scripting is very common in scientific environments, since lots of prototyping and data exploration is performed.
+A common practice includes installing the latest library in the system Python (or more sanely, in a global virtual environment / conda), then using it to develop scripts.
+Superseding of old functions meant old scripts tend to fail to run, and hence the subsequent hesitation to upgrade the library/Python.
+
+Allowing soft version pinning of the library should ideally fix this issue. See the [versioning](docs/versioning.md) writeup to see how this is implemented, and the old [design document](./docs/design.md) for the initial conception and reasoning.
+
+> The alternative is of course to rely on [PEP-723](https://peps.python.org/pep-0723/#why-not-just-set-up-a-python-project-with-a-pyproject-toml) which provides a consistent way to define inline script dependencies but requires compatible tooling to run scripts in said manner. This also came out after this library was created.
+
+### Why "kochen"?
+
+The initial choice of library name `boiler` (since this was initially a boilerplate library) was unavailable on PyPI, and
+so was the next choice `scribbles`.
+The next obvious step is to pick something that is unlikely to clash with other packages, i.e. boiling in German,
+
+> kochen [ˈkɔxn], verb:
+> (Flüssigkeit, Speise) to boil [intransitive verb]
+
+Nothing to do with Simon B. Kochen of the well-known Kochen-Specker theorem.

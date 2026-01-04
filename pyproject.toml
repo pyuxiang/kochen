@@ -35,7 +35,7 @@ dev = [
 
 # Submodule dependencies
 datautil = ["numpy", "polars", "tqdm"]
-fitutil = ["numpy"]
+fitutil = ["numpy", "scipy", "uncertainties"]
 mathutil = ["numpy", "scipy", "uncertainties"]
 plotutil = ["matplotlib"]
 all = [
