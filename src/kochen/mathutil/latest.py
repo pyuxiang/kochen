@@ -4,7 +4,6 @@ import numpy as np
 import numpy.typing as npt
 import scipy
 import scipy.optimize
-import scipy.stats.sampling
 from uncertainties import unumpy as unp
 
 # Remember this adage:
@@ -601,6 +600,12 @@ def rejection_sampling(f, samples=100, support=(0, 1)):
     large number of samples, or if an optimal support cannot be calculated
     on the fly.
     """
+    # The following error occurs in scipy:v1.16.3, numpy:v2.4.0
+    # AttributeError: module 'numpy.random.bit_generator' has no attribute 'SeedlessSequence'.
+    #     Did you mean: 'SeedSequence'?
+    # Parking module import here to avoid unnecessary usage.
+    import scipy.stats.sampling
+
     left, right = support
     assert left < right
 
