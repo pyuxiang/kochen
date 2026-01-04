@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import numpy.typing as npt
@@ -85,32 +85,6 @@ def smooth(xs: np.ndarray, window: int = 1):
     return np.array(result)
 
 
-@version("0.2024.1")
-def bin(xx, yy: np.ndarray, start: float, end: float, n: int):
-    """Perform smoothening by averaging over x-valued bins.
-
-    Deprecated - this existed in an era where I didn't know numpy.
-
-    Contexts:
-        Useful when x-data is not monotonically increasing, such as in a loop.
-        Binning can be performed to subsequently do partial derivatives over x-axis.
-
-    Examples:
-        >>> xs, ys = bin(voltages, charges, -10, 10, 51)  # 51 points between -10V to 10V
-    """
-    xs = np.linspace(start, end, n)
-    ys = []
-    for i in range(1, xs.size):
-        s = xs[i - 1]
-        e = xs[i]
-        _ = [y for i, y in enumerate(yy) if s <= xx[i] < e]
-        ys.append(np.mean(_))
-    xs += (xs[1] - xs[0]) / 2  # put in center of bin
-    # print(xs, ys)
-    return list(xs)[:-1], ys
-
-
-@version("0.2024.5")
 def bin(xs, *yss, range=None, step=None, bins=10, mode="lin", return_stdev=False):
     """Perform smoothening by averaging over x-valued bins.
 
@@ -206,7 +180,7 @@ def subsample(xs, *yss, range=(0, 1), separation=1, mode="min"):
     elif mode == "step":
         # Construct equal step spacing
         # Choose points higher than or equal to current step
-        pass
+        raise NotImplementedError()
     else:
         raise ValueError("'mode' should be one of {'min', 'step'}")
 
@@ -301,6 +275,7 @@ def find_dp(n):
     # TODO (Justin, 2022-11-29):
     #   Add code to check in opp. direction if precision passes.
     #   To accomodate for larger numbers.
+    precision = -10  # type checking workaround for unbound assignment
     for precision in range(-10, 10):
         diff = abs(n - round(n, precision))
         if diff < 1e-12:
@@ -539,7 +514,7 @@ def histogram(
     return ys[:-1], (xs[1:-1] + xs[:-2]) / 2
 
 
-def kth_min(a, k=1):
+def kth_min(a, k: Union[int, npt.NDArray] = 1):
     """Returns least-k (1-indexed) values of array.
 
     Uses np.partition to perform the required O(n) worst-case partitioning,
@@ -564,7 +539,7 @@ def kth_min(a, k=1):
         also makes denoting kth values consistent with negative kth values,
         e.g. 1 => 1st smallest, -1 => 1st largest.
     """
-    k = np.array(k)
+    k = np.asarray(k)
     return_as_int = k.ndim == 0
     k = k.reshape(-1)  # force into list
 
@@ -573,11 +548,11 @@ def kth_min(a, k=1):
         raise ValueError(f"Out-of-bounds indices: '{k}'")
 
     # Change positive integers from 1- to 0-indexed
-    k = [(v - 1 if v > 0 else v) for v in k]
+    k = np.array([(v - 1 if v > 0 else v) for v in k])
 
     # Perform partitioning and return
     if return_as_int:
-        k = np.array(k[0])
+        k = np.asarray(k[0])
     return np.partition(a, k)[k]
 
 
@@ -613,7 +588,7 @@ def find(array, value=lambda x: x != 0):
     op = value if callable(value) else lambda x: x == value
     i = 1
     while i < len(array):
-        indices = np.where(op(array[i - 1 : 2 * i - 1]))[0]
+        indices = np.where(op(array[i - 1 : 2 * i - 1]))[0]  # pyright: ignore[reportArgumentType] (artefact from a funny workaround)
         if len(indices) > 0:
             break
         i <<= 1
@@ -622,44 +597,6 @@ def find(array, value=lambda x: x != 0):
     return (i - 1) + indices[0]
 
 
-@version("0.2024.2")
-def rejection_sampling(f, samples=100, support=(0, 1)):
-    """Performs rejection sampling for a continuous distribution.
-
-    Can be faster than scipy's scipy.NumericalInversePolynomial if
-    sampling < 10 million samples, and support is near optimal.
-    """
-    left, right = support
-    assert left < right
-
-    # Find maximum value
-    xs = np.linspace(left, right, 10001)
-    ys = f(xs)
-    assert (ys >= 0).all()  # check is a proper probability distribution
-    x0 = xs[np.argmax(ys)]  # generate a guess
-    xtol = (right - left) * 1e-5
-    (fmax,) = scipy.optimize.fmin(lambda x: -f(x), x0=x0, xtol=xtol, disp=0)
-
-    # Use a default uniform distribution
-    result = []
-    sample_shortfall = samples
-    acceptance_rate = 1
-    while len(result) < samples:
-        sample_target = min(
-            int(np.ceil(sample_shortfall / acceptance_rate * 1.2)), 1000000
-        )
-
-        qs = np.random.uniform(left, right, sample_target)
-        us = np.random.uniform(0, 1, sample_target)
-        rs = qs[us < f(qs) / f(fmax) / 1.01]
-        result.extend(rs)
-
-        sample_shortfall -= len(rs)
-        acceptance_rate = len(rs) / sample_target
-    return result[:samples]
-
-
-@version("0.2024.3")
 def rejection_sampling(f, samples=100, support=(0, 1)):
     """Performs rejection sampling for a continuous distribution.
 
@@ -677,14 +614,16 @@ def rejection_sampling(f, samples=100, support=(0, 1)):
     assert (ys >= 0).all()  # check is a proper probability distribution
     x0 = xs[np.argmax(ys)]  # generate a guess
     xtol = (right - left) * 1e-5
-    (fmax,) = scipy.optimize.fmin(lambda x: -f(x), x0=x0, xtol=xtol, disp=0)
+    (fmax,) = scipy.optimize.fmin(lambda x: -f(x), x0=x0, xtol=xtol, disp=0)  # pyright: ignore[reportAssignmentType], unwilling to fix old function :p
 
     class Dist:
         def pdf(self, x):
             return f(x)
 
     return scipy.stats.sampling.NumericalInversePolynomial(
-        Dist(), center=fmax, domain=support
+        Dist(),  # pyright: ignore[reportArgumentType] (cdf()/logpdf() optional per scipy docs)
+        center=fmax,
+        domain=support,
     ).rvs(size=samples)
 
 
@@ -704,7 +643,7 @@ def split_by_condition(vs, cond):
     return data
 
 
-def inrange(value, ranges: npt.ArrayLike) -> bool | npt.NDArray[np.bool_]:
+def inrange(value, ranges: npt.ArrayLike) -> Union[bool, npt.NDArray[np.bool_]]:
     """Checks if value falls within the set of ranges.
 
     Ranges are inclusive of the bounds and should be monotonically increasing,
