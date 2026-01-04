@@ -1,7 +1,6 @@
 import numpy as np
 import scipy
 import scipy.optimize
-import scipy.stats.sampling
 
 from kochen.versioning import deprecated_after
 

@@ -7,10 +7,6 @@ import scipy.optimize
 import scipy.stats.sampling
 from uncertainties import unumpy as unp
 
-from kochen.versioning import get_namespace_versioning
-
-version, version_cleanup, __getattr__ = get_namespace_versioning(__name__, globals())
-
 # Remember this adage:
 #   There is always some numpy function out there that will
 #   solve your data processing problem.
@@ -806,6 +802,3 @@ def generate_tetrahedron(vertex, step=1, bounds=None, randomize=False):
         simplex = np.clip(simplex, *bounds.T)
 
     return simplex
-
-
-version_cleanup()

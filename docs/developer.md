@@ -1,5 +1,7 @@
 # Development
 
+Note this document is partially superseded by [docs/versioning.md](./versioning.md), with respect to the versioning implementation.
+
 ## Versioning system
 
 The versioning of this library must follow the `[MAJOR].[YEAR].[MINOR]` format, similar to that practiced by PlantUML. This is effectively a combination of [semantic versioning](https://semver.org/) and [calendar versioning](https://calver.org/):

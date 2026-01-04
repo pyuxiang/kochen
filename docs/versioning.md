@@ -263,6 +263,86 @@ return requested_version
 
 ### Old versioning implementation
 
+<details>
+<summary>Old blurb documented in the versioning.py file</summary>
+
+#### How should versioning metadata be stored
+
+Scripts should store metadata about the library version, but within the
+script itself to avoid OS-specific metadata conventions (Linux and NT store
+metadata using different methods). The way to store this should not be
+via injecting into arbitrary docstrings, but to some common identifier.
+A straightforward candidate is `import kochen` and their varieties, i.e.
+
+```
+import kochen  # some metadata here
+```
+
+#### Accessing the main script
+
+An import chain, in the most general sense, looks something like:
+
+```
+└─ main
+    └─ helper
+        └─ kochen
+            └─ versioning
+```
+
+This makes it important to identify which file the `import kochen` line
+is located for annotation. And also to annotate internal annotations within
+the library itself to prepare for upgrading.
+
+Another important note regarding the `__main__` module (which can be accessed
+via `sys.modules`): the `__file__` attribute containing the filepath will
+not exist if the main script is an interactive session. This likely means the
+versioning functionality may need to be aborted if the 'kochen' library is
+directly imported from the interactive session.
+
+Some useful tools: `os.getcwd()`, `sys.modules['__main__'].__file__',
+
+#### Strategies for modifying files
+
+Using `ast` as per [1], to build the abstract syntax tree of the file and
+modifying the docstring, is possible. Main downside is in that comments will
+be lost, since the parser will immediately discard comments. Useful mainly
+for programmatically generated modules and functions instead. If keen on this
+route, Cython's `unparse` (or `ast.unparse` as per Python 3.9) is useful for
+recompiling the ast before writing into a file.
+
+#### Strategies for versioning
+
+Got some inspiration from the way the 'os' library was written, i.e. exposing the
+functions dynamically at compile time using the `__all__` mechanism.
+
+#### Terminology
+
+    * 'requested_version':
+        Set by import line, which determines the minimum supported version.
+    * 'installed_version':
+        Determined by currently installed version.
+    * 'function_version':
+        Set by @version decorator.
+
+|            |    F <= I ?    |     F > I ?     |
+|------------|----------------|-----------------|
+| has F <= R |       OK       |    impossible   |
+| only F > R | update request |    impossible   |
+
+Note that F <= I is always true, since functions referenced in scripts will not
+have a version pinned. See if this is needed in the future.
+
+    * I == R: No issues
+    * I > R: Search for latest F < R (< I)
+    * I < R: Warn script user, then search for latest F < I (< R)
+
+#### References
+
+[1]: https://stackoverflow.com/questions/53564301/insert-docstring-attributes-in-a-python-file
+
+
+</details>
+
 The most obvious way to implement a versioning system is to add a `@version` decorator
 that has the following behaviour:
 
