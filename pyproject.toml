@@ -58,6 +58,7 @@ extend-exclude = ["src/kochen/recipe"]
 [tool.ruff.lint]
 ignore = [
   "F811",  # redefinitions expected for back-compatibility
+  "F403",  # enable wildcard import to override submodule namespace with '.latest'
 ]
 
 [tool.pyright]

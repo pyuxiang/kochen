@@ -116,6 +116,7 @@ import importlib.metadata
 import inspect
 import re
 import readline
+import sys
 from functools import partial
 from typing import Optional, Set, Dict, Tuple, Callable
 from typing_extensions import TypeAlias
@@ -313,6 +314,7 @@ __kochen_f_cache: Dict[
     Optional[str], Dict[str, FuncVersion]
 ] = {}  # store latest compatible version on reference
 __kochen_f_refmap: Dict[Optional[str], Dict[str, Version2Func]] = {}
+_track_versions: Dict[Optional[str], Dict[str, Version]] = {}
 
 
 def version(version_str: str, namespace: Optional[str] = None):
@@ -357,28 +359,8 @@ def version(version_str: str, namespace: Optional[str] = None):
     return helper
 
 
-def deprecated(version_str: str, namespace: Optional[str] = None):
-    """Decorator for indicating version of a function.
-
-    When the function is first called, the function is cached within
-    a global cacher.
-
-    For internal use within the 'kochen' library only.
-
-    Example:
-        >>> from kochen.versioning import version
-        >>> @version("0.2024.1")
-        ... def f():
-        ...     return "hello world!"
-
-    TODO:
-        See how to extend this to other libraries.
-
-        Problem is:
-            1. Need cumbersome method of deprecation + cumbersome pinning of functions
-               to current library.
-            2. Need to override __getattr__. Not very friendly...
-    """
+def deprecated_after(version_str: str, namespace: Optional[str] = None):
+    """Decorator to mark function as deprecated."""
     # Convert to version tuple
     version_tuple = _version_str2tuple(version_str)
 
@@ -387,21 +369,24 @@ def deprecated(version_str: str, namespace: Optional[str] = None):
         fname: str = f.__name__  # TODO: Check str assumption
         module: str = f.__module__
 
-        # Special case (dumping ground for deprecated functions)
-        if module.endswith(".deprec"):
-            module = module[:-7]  # remove suffix
+        # Identify namespace where function belongs to
+        _namespace = namespace
+        if _namespace is None:
+            _namespace = module
+            if (idx := module.rfind(".")) != -1:  # up one level if nested
+                _namespace = module[:idx]
 
-        # Store all versioned functions
-        ns = __kochen_f_refmap.setdefault(namespace, {})
-        fmap = ns.setdefault(fname, SortedDict())
+        # Cache earliest compatible function
+        if version_tuple >= requested_version:  # not yet deprecated
+            nmap = _track_versions.setdefault(_namespace, {})
+            if (fname not in nmap) or (version_tuple < nmap[fname]):
+                nmap[fname] = version_tuple
+                setattr(sys.modules[_namespace], fname, f)
+
+        # Store versioned function for explicit lookup
+        nmap = __kochen_f_refmap.setdefault(_namespace, {})
+        fmap = nmap.setdefault(fname, SortedDict())
         fmap[version_tuple] = f
-
-        # Cache latest compatible function
-        if version_tuple <= requested_version:
-            ns = __kochen_f_cache.setdefault(namespace, {})
-            _, prev_ver = ns.setdefault(fname, (f, version_tuple))
-            if version_tuple > prev_ver:
-                ns[fname] = (f, version_tuple)  # override with later
 
         return f
 

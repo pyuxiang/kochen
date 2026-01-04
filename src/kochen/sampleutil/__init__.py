@@ -1,3 +1,5 @@
-from kochen.sampleutil.latest import *  # noqa: F403
-from kochen.sampleutil.deprec import *  # noqa: F403
-# Do deprecation logic here
+# Sample submodule to demostrate deprecation
+# and for library testing of said functionality
+
+from .latest import *
+from . import deprec as deprec

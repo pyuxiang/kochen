@@ -208,7 +208,9 @@ import logging  # import kochen  # v0.1.2; NO PINNING
 Note also that line continuations cannot precede a comment.
 
 
-## Deprecated method
+## Deprecated implementations
+
+### Old search algorithm
 
 Old method worked by performing AST recursive depth-first search,
 starting from the Python entrypoint (i.e. retrieved via
@@ -232,7 +234,7 @@ Some relevant references:
 
 Source code for this style of version pin lookup is in `kochen:v0.2025.15`.
 
-### Deprecated logging
+### Old version lookup logging
 
 ```python
 logger.warning(f"'{TARGET_LIBRARY}' could not be found")
@@ -257,4 +259,173 @@ logger.debug(
     f"from {module_name}:{lineno}"
 )
 return requested_version
+```
+
+### Old versioning implementation
+
+The most obvious way to implement a versioning system is to add a `@version` decorator
+that has the following behaviour:
+
+* Functions decorated with `@version` are tracked in the `versioning` submodule on load.
+* Library version pinning occurs at import time.
+* Access to versioned functions is proxied to the relevant function.
+* All functions being versioned exist within the same module.
+
+This resulted in the following implementation:
+
+```python
+#!/usr/bin/env python3
+import kochen.versioning
+
+version = partial(kochen.versioning.version, namespace=__name__)
+
+@version("0.2024.1")
+def f(value):
+    return value
+
+@version("0.2024.2")
+def f(value):
+    return 2 * value
+
+kochen.versioning.cleanup(globals(), namespace=__name__)
+__getattr__ = partial(kochen.versioning.search, namespace=__name__)
+```
+
+<details>
+<summary>Subroutine implementations</summary>
+
+```python
+FUNCTION_ALL = {}
+FUNCTION_TARGETS = {}
+
+def version(version_str, namespace):
+    version_tuple = _version_str2tuple(version_str)
+
+    def helper(f):
+        fname = f.__name__
+
+        ns = FUNCTION_ALL.setdefault(namespace, {})  # store references to all versioned functions
+        fmap = ns.setdefault(fname, SortedDict())
+        fmap[version_tuple] = f
+
+        if version_tuple <= requested_version:
+            ns = FUNCTION_TARGETS.setdefault(namespace, {})
+            _, prev_ver = ns.setdefault(fname, (f, version_tuple))  # store latest compatible function
+            if version_tuple > prev_ver:
+                ns[fname] = (f, version_tuple)
+
+        return f
+    return helper
+
+def cleanup(globals_ref, namespace):
+    """
+    This removes all references to versioned functions within the module,
+    so that 'module.__getattr__' will trigger on missing attribute (and
+    subsequently used to proxy the correct function).
+
+    'globals_ref' is passed to gain direct access to the module's globals
+    for manipulation.
+    """
+    if globals_ref is None:
+        return
+    if (ns := FUNCTION_ALL.get(namespace)) is None:
+        return
+    for fname in ns.keys():
+        if fname in globals_ref:
+            globals_ref.pop(fname)
+
+def search(fname, namespace):
+    ns = FUNCTION_TARGETS.get(namespace)
+    if ns is None or (result := ns.get(fname)) is None:
+        raise AttributeError(f"'{fname}' is not versioned/does not exist.")
+    f, version_tuple = result
+    return f
+```
+
+</details>
+
+Clearly there are several downsides to this implementation - some obvious, some in retrospect:
+
+1. Lots of boilerplate needed to setup versioning within the module:
+   * Functions of the same name shadowed each other, and retains the last function definition
+   * `__getattr__` was used to proxy the functions at runtime, which triggers only if the attribute
+     were undefined. This was handled by a `cleanup` function munging the tracking dictionary.
+2. Version lookup at runtime adds runtime overhead.
+   * Can be partially addressed by performing function caching, i.e. assigning to `globals()` again.
+3. Adding a new version of a function introduces some maintenance overhead.
+   * Converting from non-versioned to versioned raises the question:
+     "In which version of the library was the function first introduced?"
+   * New versions require predicting the new library version:
+     "Minor or patch increment?"
+   * Too many redefinitions of the function result in a clunky submodule.
+
+The current attempt addresses these specific points:
+
+1. Boilerplate is minimized by shelving the deprecated functions into a nested submodule.
+   * Namespace no longer needs cleaning, since it pollutes a nested namespace instead.
+2. Caching of version lookups is now performed at import time.
+   * Resolution is performed at submodule import time and cached by monkey patching
+     the submodule namespace via `sys.modules`.
+   * No runtime overhead.
+3. `deprecated_after` supersedes the `version` decorator.
+   * Often not needed to prevent new functionality propagation to earlier scripts, since they
+     wouldn't have used them in the first place when writing the script.
+   * `deprecated_after` does not require predicting the next library version.
+
+Implementation looks like this:
+
+```python
+# kochen/SUBMODULE/__init__.py
+from .latest import *  # export all latest symbols
+from . import deprec  # potential overriding of definition
+
+# kochen/SUBMODULE/deprec.py
+@deprecated_after("0.2024.1")
+def f(value):
+    return value
+
+# kochen/SUBMODULE/latest.py
+def f(value):
+    return 2 * value
+```
+
+<details>
+<summary>Subroutine implementations</summary>
+
+```python
+FUNCTION_ALL = {}
+FUNCTION_TARGETS = {}
+
+def deprecated_after(version_str: str, namespace: Optional[str] = None):
+    """Decorator to mark function as deprecated."""
+    # Convert to version tuple
+    version_tuple = _version_str2tuple(version_str)
+
+    def helper(f: Callable):
+        # Cache function in loader for dynamic calls
+        fname: str = f.__name__  # TODO: Check str assumption
+        module: str = f.__module__
+
+        # Identify namespace where function belongs to
+        _namespace = namespace
+        if _namespace is None:
+            _namespace = module
+            if (idx := module.rfind(".")) != -1:  # up one level if nested
+                _namespace = module[:idx]
+
+        # Cache earliest compatible function
+        if version_tuple >= requested_version:  # not yet deprecated
+            nmap = FUNCTION_TARGETS.setdefault(_namespace, {})
+            if (fname not in nmap) or (version_tuple < nmap[fname]):
+                nmap[fname] = version_tuple
+                setattr(sys.modules[_namespace], fname, f)
+
+        # Store versioned function for explicit lookup
+        nmap = FUNCTION_ALL.setdefault(_namespace, {})
+        fmap = nmap.setdefault(fname, SortedDict())
+        fmap[version_tuple] = f
+
+        return f
+
+    return helper
 ```
