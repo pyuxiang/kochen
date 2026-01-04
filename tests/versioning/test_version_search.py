@@ -2,6 +2,16 @@ import subprocess
 
 import kochen.versioning
 
+def test_version_nested_import1(CACHE_DISABLED):
+    from .mock_package.test_mock_module1 import test_importfrom_versionpin_identitytest1 as test
+    test(None)
+
+
+def test_version_nested_import2(CACHE_DISABLED):
+    from .mock_package.test_mock_module2 import test_importfrom_versionpin_identitytest2 as test
+    test(None)
+
+
 def test_command_import():
     # Note the specific choice of quotation marks below is intentional:
     # Windows Powershell encapsulates string with single quotes, and use of single
