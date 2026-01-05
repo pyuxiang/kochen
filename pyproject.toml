@@ -37,7 +37,7 @@ dev = [
 datautil = ["numpy", "polars", "tqdm"]
 fitutil = ["numpy", "scipy", "uncertainties"]
 mathutil = ["numpy", "scipy", "uncertainties"]
-plotutil = ["matplotlib"]
+plotutil = ["arrow", "matplotlib"]
 all = [
   "kochen[datautil]",
   "kochen[fitutil]",
