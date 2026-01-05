@@ -12,9 +12,20 @@ import pickle
 import re
 import sys
 from collections import defaultdict
-from typing import Callable, Iterable, Optional, Tuple, Type, Any, Union
+from typing import (
+    Callable,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    Any,
+    Union,
+    TYPE_CHECKING,
+)
 
 import numpy as np
+import numpy.typing as npt
 import polars as pl
 import tqdm
 
@@ -812,6 +823,15 @@ class FrozenCollector(BaseCollector):
     def __repr__(self):
         return f"FrozenCollector[{', '.join(self.__attributes)}]"
 
+    # Enforce signature for frozen collectors whose attributes are dynamically defined.
+    if TYPE_CHECKING:
+        # Use forward reference
+        def __getattr__(self, name: str) -> Union[List[Any], "FrozenCollector"]:
+            return getattr(self, name)
+
+        def __setattr__(self, name: str, value: Any) -> None:
+            return None
+
 
 class FrozenNumpyCollector(BaseCollector):
     """Frozen equivalent of Collector, with numpy array values.
@@ -851,6 +871,17 @@ class FrozenNumpyCollector(BaseCollector):
     def __repr__(self):
         return f"FrozenNumpyCollector[{', '.join(self.__attributes)}]"
 
+    # Enforce signature for frozen collectors whose attributes are dynamically defined.
+    if TYPE_CHECKING:
+        # Use forward reference
+        def __getattr__(
+            self, name: str
+        ) -> Union[npt.NDArray[Any], "FrozenNumpyCollector"]:
+            return getattr(self, name)
+
+        def __setattr__(self, name: str, value: Any) -> None:
+            return None
+
 
 class CollectorUtil:
     @staticmethod
@@ -871,3 +902,26 @@ class CollectorUtil:
             series = df[column].to_list()
             getattr(c, column).extend(series)
         return c
+
+    @staticmethod
+    def assert_list(value: Union[BaseCollector, List[Any]]) -> List[Any]:
+        """Used for type-checking assertion."""
+        if isinstance(value, BaseCollector):
+            raise ValueError("input is not a list.")
+        return value
+
+    @staticmethod
+    def assert_array(value: Union[BaseCollector, npt.NDArray[Any]]) -> npt.NDArray[Any]:
+        """Used for type-checking assertion."""
+        if isinstance(value, BaseCollector):
+            raise ValueError("input is not an array.")
+        return value
+
+    @staticmethod
+    def assert_collector(
+        value: Union[BaseCollector, npt.NDArray[Any]],
+    ) -> BaseCollector:
+        """Used for type-checking assertion."""
+        if not isinstance(value, BaseCollector):
+            raise ValueError("input is not a Collector.")
+        return value
