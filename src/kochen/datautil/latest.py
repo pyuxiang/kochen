@@ -2,8 +2,6 @@
 # Justin, 2022-12-20
 """Provides helper functions for data management."""
 
-__all__ = ["pprint", "read_log"]
-
 import datetime as dt
 import enum
 import functools
@@ -14,7 +12,7 @@ import pickle
 import re
 import sys
 from collections import defaultdict
-from typing import Callable, Iterable, Optional, Type, Any, Union
+from typing import Callable, Iterable, Optional, Tuple, Type, Any, Union
 
 import numpy as np
 import polars as pl
@@ -552,28 +550,65 @@ def filecache(
 
 
 def datacache(
-    data=None,
-    name="~~adhocdatastorage~~",  # must be invalid function name
+    data: Union[Callable[..., object], Any] = None,
+    name: Optional[str] = None,  # must be invalid function name
     path=None,
+    overwrite: bool = False,
     backend: str = "pickle",
 ):
     """Analog to 'filecache' but for data.
 
+    If 'data' is a lambda callable, then it does a cleaner delegation.
+
     Examples:
+        # Regular usage
         >>> if (data := datacache()) is None:
         ...     data = 42  # generate data, i.e. expensive
         ...     datacache(data)
         >>> datacache()
         42
-    """
-    overwrite = data is not None
 
-    # Use the same filecache mechanism
-    @filecache(path=path, overwrite=overwrite, backend=backend)
+        # Lambda delegation
+        >>> datacache(lambda: 42)
+        42
+
+        # Lambda delegation, with argument name override
+        >>> datacache(lambda MYDATA: 42)
+        42
+        >>> datacache(lambda: 42, name="MYDATA")  # equivalent
+        42
+    """
+
+    # Check if data is lambda
+    lmb = callable(data) and getattr(data, "__name__", None) == "<lambda>"
+    args: Tuple = (None,)
+    if lmb:
+        argc = data.__code__.co_argcount
+        assert argc < 2
+        args = argc * args  # prepare required number of arguments for lambda
+        if argc == 1:
+            if name is not None:
+                raise ValueError(
+                    "'name' cannot be provided if <lambda> aleady has "
+                    "a named argument, to avoid confusion."
+                )
+            (name,) = data.__code__.co_varnames  # use arg name as identifier
+
+    # Fallback value for name
+    if name is None:
+        name = "~adhocdatastorage~~"
+
+    # Use the same filecache mechanism, with renamed function as key
     def f():
+        if lmb:
+            return data(*args)
         return data
 
-    f.__name__ = name
+    f.__name__ = f"~{name}"  # enforce tilde prefix to avoid clash
+
+    # Alternative is to apply decorator first, then modify @filecache
+    # to pass 'cacher.__name__' instead of the original 'f.__name__'
+    f = filecache(path=path, overwrite=overwrite, backend=backend)(f)
     return f()
 
 
