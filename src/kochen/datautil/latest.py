@@ -12,6 +12,7 @@ import pickle
 import re
 import sys
 from collections import defaultdict
+from copy import deepcopy
 from typing import (
     Callable,
     Iterable,
@@ -729,7 +730,7 @@ def Collector():
 
         def __getattr__(self, name: str):
             internal_name = f"-{name}"  # field with '-' is rarely user-defined
-            setattr(self, internal_name, CollectorList())  # create new list
+            setattr(self, name, CollectorList())  # create new list
 
             def fget(self):
                 return getattr(self, internal_name)
@@ -745,27 +746,29 @@ def Collector():
             return getattr(self, name)
 
         def __setattr__(self, name: str, value: Any) -> None:
-            if isinstance(value, (CollectorList, BaseCollector)):
-                return super().__setattr__(name, value)  # initialize field
+            if isinstance(value, CollectorList):
+                internal_name = f"-{name}"
+                if (
+                    len(value) != 0
+                ):  # this value is user-assigned: run 'getattr' to initialize field
+                    getattr(self, name)
+                return super().__setattr__(internal_name, value)
             getattr(self, name).append(value)
 
         def __attributes(self):
+            """List visible attributes."""
             d = self.__dict__
             keys = [
                 attr[1:]
                 for attr in d.keys()
                 if (isinstance(d[attr], CollectorList) and len(d[attr]) != 0)
             ]
-            keys += [attr for attr in d.keys() if (isinstance(d[attr], BaseCollector))]
             return keys
 
         def __repr__(self):
             return f"Collector[{', '.join(self.__attributes())}]"
 
     return Collector()
-
-
-collector = Collector()  # generic default for simple usage
 
 
 class FrozenCollector(BaseCollector):
@@ -812,11 +815,7 @@ class FrozenCollector(BaseCollector):
         self.__attributes = collector._Collector__attributes()
         for key in self.__attributes:
             value = getattr(collector, key)
-            if isinstance(value, BaseCollector):
-                value = FrozenCollector(value)
-            elif copy:
-                from copy import deepcopy
-
+            if copy:
                 value = deepcopy(list(value))
             setattr(self, key, value)
 
@@ -825,8 +824,8 @@ class FrozenCollector(BaseCollector):
 
     # Enforce signature for frozen collectors whose attributes are dynamically defined.
     if TYPE_CHECKING:
-        # Use forward reference
-        def __getattr__(self, name: str) -> Union[List[Any], "FrozenCollector"]:
+
+        def __getattr__(self, name: str) -> List[Any]:
             return getattr(self, name)
 
         def __setattr__(self, name: str, value: Any) -> None:
@@ -862,10 +861,7 @@ class FrozenNumpyCollector(BaseCollector):
             self.__attributes = collector._FrozenCollector__attributes()
         for key in self.__attributes:
             value = getattr(collector, key)
-            if isinstance(value, BaseCollector):
-                value = FrozenNumpyCollector(value)
-            else:
-                value = np.asarray(value)
+            value = np.asarray(value)
             setattr(self, key, value)
 
     def __repr__(self):
@@ -873,10 +869,8 @@ class FrozenNumpyCollector(BaseCollector):
 
     # Enforce signature for frozen collectors whose attributes are dynamically defined.
     if TYPE_CHECKING:
-        # Use forward reference
-        def __getattr__(
-            self, name: str
-        ) -> Union[npt.NDArray[Any], "FrozenNumpyCollector"]:
+
+        def __getattr__(self, name: str) -> npt.NDArray[Any]:
             return getattr(self, name)
 
         def __setattr__(self, name: str, value: Any) -> None:
@@ -902,26 +896,3 @@ class CollectorUtil:
             series = df[column].to_list()
             getattr(c, column).extend(series)
         return c
-
-    @staticmethod
-    def assert_list(value: Union[BaseCollector, List[Any]]) -> List[Any]:
-        """Used for type-checking assertion."""
-        if isinstance(value, BaseCollector):
-            raise ValueError("input is not a list.")
-        return value
-
-    @staticmethod
-    def assert_array(value: Union[BaseCollector, npt.NDArray[Any]]) -> npt.NDArray[Any]:
-        """Used for type-checking assertion."""
-        if isinstance(value, BaseCollector):
-            raise ValueError("input is not an array.")
-        return value
-
-    @staticmethod
-    def assert_collector(
-        value: Union[BaseCollector, npt.NDArray[Any]],
-    ) -> BaseCollector:
-        """Used for type-checking assertion."""
-        if not isinstance(value, BaseCollector):
-            raise ValueError("input is not a Collector.")
-        return value
