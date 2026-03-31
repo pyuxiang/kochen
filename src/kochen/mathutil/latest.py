@@ -1,3 +1,4 @@
+import bisect
 from typing import Optional, Union
 
 import numpy as np
@@ -807,3 +808,60 @@ def generate_tetrahedron(vertex, step=1, bounds=None, randomize=False):
         simplex = np.clip(simplex, *bounds.T)
 
     return simplex
+
+
+def generate_spherical(samples: int = 1000, offset: bool = True):
+    """Returns Cartesian points distributed evenly on unit sphere.
+
+    This generates near-uniform points that look uniform by eye, using the
+    canonical lattice generation method. See the respective documentation for
+    how this works.
+    """
+    if offset:
+        return _offset_canonical_lattice(samples)
+    return _fibonacci_sphere(samples)
+
+
+def _fibonacci_sphere(samples: int = 1000):
+    """Returns (x,y,z) triplets distributed on spherical surface.
+
+    Also known as the canonical lattice.
+
+    References:
+        [1]: Original source: "Measurement of areas on a sphere using
+             Fibonacci and latitude-longitude lattices", <https://arxiv.org/pdf/0912.4540>
+        [2]: Code adapted from <https://stackoverflow.com/a/26127012>
+    """
+    phi = np.pi * (5**0.5 - 1)  # golden angle in radians
+    indices = np.arange(samples)
+    y = 1 - 2 * (indices / (samples - 1))
+    radius = np.sqrt(1 - y**2)
+    theta = phi * indices
+    x = np.cos(theta) * radius
+    z = np.sin(theta) * radius
+    points = np.vstack([x, y, z]).T
+    return points
+
+
+def _offset_canonical_lattice(samples: int = 1000):
+    """Returns (x,y,z) triplets distributed on spherical surface.
+
+    This is the same as the canonical lattice, but with adaptive
+    offsets ("epsilon") based on the number of spherical points.
+
+    References:
+        [1]: Source, <https://extremelearning.com.au/how-to-evenly-distribute-points-on-a-sphere-more-effectively-than-the-canonical-fibonacci-lattice/#more-3069>
+    """
+    thresholds = [24, 177, 890, 11000, 39000, 600000]
+    threshold_values = [0.33, 1.33, 3.33, 10, 27, 75, 214]
+    epsilon = threshold_values[bisect.bisect_right(thresholds, samples)]
+
+    ratio = 5**0.5 - 1
+    indices = np.arange(samples)
+    theta = 2 * np.pi * indices / ratio
+    phi = np.arccos(1 - 2 * (indices + epsilon) / (samples - 1 + 2 * epsilon))
+    x = np.cos(theta) * np.sin(phi)
+    y = np.sin(theta) * np.sin(phi)
+    z = np.cos(phi)
+    points = np.vstack([x, y, z]).T
+    return points
