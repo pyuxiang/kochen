@@ -17,6 +17,7 @@ repos:
       - id: ruff-format
         files: 'src'
         stages: [pre-commit]
+        fail_fast: true
 
   - repo: https://github.com/DetachHead/basedpyright-prek-mirror
     rev: 1.32.1
