@@ -1,3 +1,4 @@
+from typing import Any, Callable, Tuple, Union
 import numpy as np
 
 
@@ -17,12 +18,47 @@ def gaussian_pdf(x, μ, σ):
     return gaussian(x, A, μ, σ)
 
 
-def fit(f, xs, ys, errors: bool = False, labels: bool = False, *args, **kwargs):
+def fit(
+    f,
+    xs,
+    ys,
+    errors: bool = False,
+    labels: bool = False,
+    p0: Union[Tuple, Callable[[Any, Any], Tuple], None] = None,
+    **kwargs,
+):
+    """Perform fitting and returns fit parameters.
+
+    A nicer wrapper to 'scipy.optimize.curve_fit' to do common operations, like
+    fit error calculation and display.
+
+    Args:
+        f: Function to fit.
+        xs: x-data.
+        ys: y-data.
+        errors: Returns params with uncertainty if True.
+        labels: Returns second arg with string display labels if True.
+        p0: Initial guess, either supply params or function with form f(xs, ys).
+
+    Examples:
+        >>> xs = [1, 2, 3, 4, 5]
+        >>> ys = [0, 1, 3, 1, 0]
+        >>> fit(gaussian, xs, ys, p0=estimate_gaussian_params)
+
+    TODO:
+        Do proper return annotations.
+    """
     import uncertainties
     import inspect
-    import scipy
+    import scipy.optimize
 
-    popt, pcov = scipy.optimize.curve_fit(f, xs, ys, *args, **kwargs)
+    # Add initial parameters
+    if callable(p0):
+        p0: Tuple = p0(xs, ys)
+    kwargs["p0"] = p0  # None by default
+
+    # Perform fitting
+    popt, pcov = scipy.optimize.curve_fit(f, xs, ys, **kwargs)  # pyright: ignore[reportAssignmentType], dispatch
     if not errors and not labels:
         return popt  # defaults to standard
 
@@ -93,4 +129,4 @@ def lmfit_patch():
         def guess(self, data, x=None, y=None, **kwargs):
             return self.make_params(c=np.mean(data))
 
-    lmfit.models.Constant2dModel = Constant2dModel
+    lmfit.models.Constant2dModel = Constant2dModel  # pyright: ignore[reportAttributeAccessIssue], redefinition
