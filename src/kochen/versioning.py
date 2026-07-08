@@ -11,9 +11,13 @@ Changelog:
 import importlib.metadata
 import inspect
 import re
-import readline
 import sys
 from typing import Optional, Dict, Tuple, Callable
+
+try:
+    import readline
+except ModuleNotFoundError:
+    readline = None
 
 # To eventually include when doing arbitrary version lookups:
 # from sortedcontainers import SortedDict  # for O(logN) bisection methods
@@ -161,16 +165,22 @@ def _get_requested_version():
         especially since step 4 is very unusual, and we would still like
         to preserve version pinning functionality for user REPL prototyping.
 
-    See documentation at 'kochen/docs/versioning.md'.
+        See documentation at 'kochen/docs/versioning.md'.
+
+        Because GNU readline is not natively provided in Windows, this
+        dynamic lookup behaviour within REPLs for Windows is disabled.
+        This can be bypassed by manually installing pyreadline3.
+        See the relevant commit for details.
     """
     # Read from local history for CPython REPLs
-    idx = readline.get_current_history_length()
-    if idx > 0:
-        line: Optional[str] = readline.get_history_item(idx)
-        if line is not None:
-            version: Optional[Version] = _parse_version_pin(line)
-            if version is not None:
-                return version
+    if readline is not None:
+        idx = readline.get_current_history_length()
+        if idx > 0:
+            line: Optional[str] = readline.get_history_item(idx)
+            if line is not None:
+                version: Optional[Version] = _parse_version_pin(line)
+                if version is not None:
+                    return version
 
     # Look for file-based library import line
     stack = inspect.stack(context=1)
