@@ -4,7 +4,7 @@ Primarily a library of personal scripts and handy boilerplate, for scientific en
 
 This library is additionally designed for [strong backward-compatibility](#strong-backward-compatibility): old scripts dependent on functionality in older library versions can still run, simply by performing a soft version pin in the script (whereas, traditionally, older versions of the library itself needs to be installed).
 
-Licensed under GPLv2-or-later, because free software is best left open.
+Licensed under LGPLv2.1-or-later, because free software is best left open.
 
 ## Installation
 
